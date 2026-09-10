@@ -1,0 +1,35 @@
+{
+  "$comment": "Derived verification-conformance rule set. Guards Shipshape methodology in this project's own verification support, not product behaviour. Derived by Shipwright at fitting out per the Shipwright skill's Methodology checks. No named structural-query engine is available for a Python-only stack at this fitting-out pass, so rules are plain text-pattern checks run through the stack's own runtime (python3), per the text-search fallback the Check tooling clause names. A rule's checker logic belongs in the promoted @conformance scenario's step definitions, written by QM; this file lists the rules only.",
+  "stack": "python",
+  "engine": "text-pattern (no structural-query engine derived for this stack at this pass)",
+  "status": "unreferenced: no scenario yet attests these rules, per the Scantling agreement. This project has no Gherkin runner selected, see RIGGING.md blank focused/discover/step-usage/specs slots and the Shipwright harbour report. Wire a referencing @conformance scenario once the runner is chosen.",
+  "rules": [
+    {
+      "id": "plank-form",
+      "reason": "plank-inventory (RIGGING.md) falls back to token search over implementation paths because Python has no installable docblock/AST-with-comments reader analogous to jsdoc or ts-morph in this fitting-out pass; the Methodology checks clause obligates this rule wherever that fallback stands.",
+      "check": "every @planks(...) or @planks-provisional(...) token in the implementation paths sits inside a docstring that is the first statement of the function, method, or class declaration it describes; a token in a bare comment or in the body of a declaration is malformed.",
+      "redden_on": [
+        "a @planks or @planks-provisional token outside a docstring immediately preceding a declaration",
+        "a @planks string matching no current step-definition pattern from step-usage",
+        "a @planks-provisional reference naming a scenario that no longer carries @captain"
+      ],
+      "proof": "plant a line-comment plank, confirm red, remove the plant; QM proves this at adoption per the Verification policy."
+    },
+    {
+      "id": "plank-coverage",
+      "reason": "companion to plank-form under the same token-search-fallback obligation.",
+      "check": "every behaviour-bearing step-definition pattern reported by step-usage has at least one matching plank token in the implementation paths.",
+      "redden_on": [
+        "a step-definition pattern with no matching @planks token"
+      ],
+      "proof": "blocked until a Gherkin runner is selected and step-usage exists; QM proves this at adoption once wired."
+    },
+    {
+      "id": "perturbation-quiescence-support",
+      "reason": "standing companion note; the actual perturbation-quiescence check is one of the two required @conformance scenario skeletons, not a rule in this set. Listed here only as a cross-reference so a reader of this file finds it.",
+      "check": "see the required @conformance scenario 'perturbation quiescence', owed on every fitting-out, currently blocked on the specs directory per the harbour report.",
+      "redden_on": [],
+      "proof": "not applicable to this rule set"
+    }
+  ]
+}

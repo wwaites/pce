@@ -196,3 +196,7 @@ This copies Shipshape's strongest packaging idea:
 4. Wire `required_gates: ["specialist"]` into `run_loop.py`; only `fact-checker` and `critic` are dispatched today.
 5. Add auto-revision looping to `run_loop.py` (redispatch `author` on a `revise`/`fail` verdict, up to `state.json`'s `max_passes`); the current runner reports one pass and stops.
 6. Add Codex and Pi adapters once each runtime's skill or extension install convention is confirmed; the dispatch ladder in `dispatch.md` already covers Pi's process-spawn-only model.
+
+## Built with Shipshape
+
+This repository uses [Shipshape](https://github.com/dmytri/shipshape), a context-isolated spec-driven workflow for coding agents. Install with `npx skills add dmytri/shipshape --skill '*'`, or the experimental open-plugin build with `npx plugins add dmytri/shipshape`.
