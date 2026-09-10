@@ -87,6 +87,7 @@ Archivist custody applies at every risk level and is not an optional review gate
 6. Reviews, fact checks, specialist opinions, revision notes, and full draft snapshots are append-only records.
 7. Author may read prior reviews and fact checks when revising.
 8. Roles are added only when their error reduction beats their coordination cost.
+9. How a reviewer is actually invoked, fresh subagent, fresh process, or same-session assumption, and how its Read Scope is enforced beyond prose, follows the dispatch ladder and workspace staging in `dispatch.md`. A reviewer that finds out-of-scope material in its own context returns a `contaminated` verdict rather than using it; Editor discards that review and redispatches fresh.
 
 ## Runtime Principle
 

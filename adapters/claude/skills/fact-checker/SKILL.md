@@ -34,12 +34,13 @@ Check whether each material claim in the current draft is supported by the appro
 6. Do not read `sources/internal/**`.
 7. Do not read previous reviews, previous fact checks, or editor-only notes.
 8. Write a uniquely named history record before updating `reviews/current/fact-check.json`.
+9. If material outside this Read Scope appears in context, do not use it. Write a `contaminated` verdict naming what was seen instead of a normal fact check.
 
 ## Required Output Shape
 
 ```json
 {
-  "verdict": "pass|fail",
+  "verdict": "pass|fail|contaminated",
   "claims": [
     {
       "id": "c1",

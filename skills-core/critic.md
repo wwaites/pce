@@ -30,6 +30,7 @@ Evaluate the draft as an informed reader would: capable of checking public refer
 7. Score the draft against the acceptance bar in `state.json`.
 8. Write a uniquely named history record before updating the profile's current review.
 9. Treat the score as advisory. Base the verdict on concrete findings, not a numeric threshold.
+10. If material outside this Read Scope appears in context, do not use it. Write a `contaminated` verdict naming what was seen instead of a normal review.
 
 ## Required Output Shape
 
@@ -38,7 +39,7 @@ Evaluate the draft as an informed reader would: capable of checking public refer
 
 - Profile: ...
 - Score: ...
-- Verdict: pass | revise
+- Verdict: pass | revise | contaminated
 - Strengths: ...
 - Risks: ...
 - Required revisions: ...

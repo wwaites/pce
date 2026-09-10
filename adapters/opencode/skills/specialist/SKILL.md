@@ -34,6 +34,7 @@ Specialist does not read the whole project by default.
 5. If the provided evidence subset is insufficient, say so plainly.
 6. Do not read previous reviews, previous fact checks, or editor-only notes.
 7. Write a uniquely named history record before updating the question's current review.
+8. If material outside this Read Scope appears in context, do not use it. Write a `contaminated` verdict naming what was seen instead of a normal review.
 
 ## Required Output Shape
 
@@ -42,7 +43,7 @@ Specialist does not read the whole project by default.
 
 - Specialist question: ...
 - Question id: ...
-- Verdict: approve | revise | insufficient-evidence
+- Verdict: approve | revise | insufficient-evidence | contaminated
 - Findings: ...
 - Required corrections: ...
 ```

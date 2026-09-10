@@ -8,7 +8,7 @@
   "properties": {
     "verdict": {
       "type": "string",
-      "enum": ["pass", "fail"]
+      "enum": ["pass", "fail", "contaminated"]
     },
     "claims": {
       "type": "array",

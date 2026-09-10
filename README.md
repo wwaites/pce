@@ -117,6 +117,19 @@ file under `reviews/history/` before its `reviews/current/*` pointer is updated.
 Every substantive draft must pass through Archivist, which writes its revision
 note and full snapshot under `revisions/history/` before review or acceptance.
 
+## Dispatch
+
+Target runtimes span a wide capability range, from Claude Code and opencode,
+which can spawn isolated subagents, to Pi, which has no subagent primitive at
+all and can only launch a fresh process of itself through its bash tool.
+`skills-core/dispatch.md` names the resulting three-rung dispatch ladder
+(isolated subagent, external process spawn, same-session role assumption) and
+the portable workspace-staging mechanism Editor uses to keep a reviewer's
+file-read tool inside its Read Scope, since no target runtime offers a
+path-scoped permission system in common. A reviewer that finds material
+outside its Read Scope returns a `contaminated` verdict instead of using it;
+Editor discards that review and redispatches fresh.
+
 ## Packaging Modes
 
 ### Nix
@@ -158,6 +171,7 @@ This copies Shipshape's strongest packaging idea:
 
 ## Next Steps
 
-1. Add a tiny runner that executes one bounded review loop.
-2. Add a conformance check proving `critic` and `fact-checker` cannot read `sources/internal/**`.
+1. Add a tiny runner that executes one bounded review loop, including workspace staging per `dispatch.md`.
+2. Add a conformance check proving `critic` and `fact-checker` cannot read `sources/internal/**` when run against a staged workspace.
 3. Add a conformance check proving accepted drafts do not carry unsupported claims.
+4. Add Codex and Pi adapters once each runtime's skill or extension install convention is confirmed; the dispatch ladder in `dispatch.md` already covers Pi's process-spawn-only model.
