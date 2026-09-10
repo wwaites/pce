@@ -26,7 +26,7 @@ SKILLS = {
     ),
     "critic": (
         "critic.md",
-        "Blind review, fresh eyes, clarity review, argument quality, completeness, or reader-risk review over drafts/current.md. Use when a draft needs quality review without source access.",
+        "Blind review, fresh eyes, clarity review, argument quality, completeness, or reader-risk review over drafts/current.md. Use when a draft needs quality review without access to the author's internal notes.",
     ),
     "editor": (
         "editor.md",
@@ -34,7 +34,7 @@ SKILLS = {
     ),
     "fact-checker": (
         "fact-checker.md",
-        "Fact checking, citations, evidence review, unsupported claims, or adversarial verification over drafts/current.md and sources/. Use when factual claims must be checked against approved sources.",
+        "Fact checking, citations, evidence review, unsupported claims, or adversarial verification over drafts/current.md and sources/external/. Use when factual claims must be checked against approved external sources.",
     ),
     "specialist": (
         "specialist.md",

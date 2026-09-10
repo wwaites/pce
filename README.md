@@ -17,8 +17,8 @@ Target properties:
 
 - `editor`: human-facing remit and acceptance decisions
 - `author`: source-grounded drafting
-- `fact-checker`: adversarial fact checking against approved sources
-- `critic`: blind quality review without source access
+- `fact-checker`: adversarial fact checking against approved external sources
+- `critic`: blind quality review without access to internal notes
 - `specialist`: optional subject-matter review for bounded specialist questions
 - `archivist`: append-only custody for full draft snapshots and provenance records
 
@@ -50,7 +50,8 @@ Shared artifacts:
 
 ```text
 brief.md
-sources/
+sources/internal/          author and editor working material, never seen by a reviewer
+sources/external/          approved public, citable reference material
 drafts/current.md
 claims/current.json
 reviews/current/fact-check.json
@@ -100,6 +101,17 @@ The author may read the accumulated review record when revising. This avoids
 reviewer convergence artefacts while preserving an audit trail and giving the
 author the full correction history.
 
+## Source Material
+
+Source material splits into `sources/internal/` (author and editor working
+material: notes, rationale, framing) and `sources/external/` (approved public,
+citable reference material). A role's Read Scope is bounded by what a real
+party filling that role could plausibly access on their own: no real external
+reviewer ever sees `sources/internal/`, so it never crosses into a review gate,
+while `sources/external/` is exactly what an informed reader could find
+independently, and is in scope wherever a role's contract lists it. A reviewer
+is blind to the workflow's internal process, not to the public record.
+
 Every review, fact check, and specialist opinion must be written to a unique
 file under `reviews/history/` before its `reviews/current/*` pointer is updated.
 Every substantive draft must pass through Archivist, which writes its revision
@@ -147,5 +159,5 @@ This copies Shipshape's strongest packaging idea:
 ## Next Steps
 
 1. Add a tiny runner that executes one bounded review loop.
-2. Add a conformance check proving `critic` cannot read `sources/`.
+2. Add a conformance check proving `critic` and `fact-checker` cannot read `sources/internal/**`.
 3. Add a conformance check proving accepted drafts do not carry unsupported claims.

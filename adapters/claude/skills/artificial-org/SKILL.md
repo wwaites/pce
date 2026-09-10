@@ -15,8 +15,8 @@ Make the overall workflow reliable through role structure, review boundaries, du
 
 - `editor`: human-facing remit and acceptance decisions
 - `author`: source-grounded drafting
-- `fact-checker`: adversarial fact checking against approved sources
-- `critic`: blind quality review without source access
+- `fact-checker`: adversarial fact checking against approved external sources
+- `critic`: blind quality review without access to internal notes
 - `specialist`: optional subject-matter review for bounded specialist questions
 - `archivist`: append-only custody for full draft snapshots and provenance records
 
@@ -30,7 +30,8 @@ In runtime adapters, `editor` is the human-facing entry skill. An overview skill
 ## Artifacts
 
 - `brief.md`
-- `sources/`
+- `sources/internal/`
+- `sources/external/`
 - `drafts/current.md`
 - `claims/current.json`
 - `reviews/current/fact-check.json`
@@ -84,7 +85,7 @@ Archivist custody applies at every risk level and is not an optional review gate
 ## Context Hygiene
 
 1. Cross-role handoff happens through durable files, not hidden chat state.
-2. `critic` does not read the source pack.
+2. `sources/internal/**` never crosses into a review gate. `sources/external/**` is in scope wherever a role's contract lists it: a reviewer is blind to the workflow's internal process, not to what an informed reader could find on their own.
 3. Reviewers do not read previous reviews or editor-only notes; each review is fresh.
 4. `specialist` sees only the minimum subset needed for the specialist question.
 5. Accepted factual claims must carry evidence.

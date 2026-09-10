@@ -15,7 +15,7 @@ Answer one bounded specialist question that general review should not guess at.
 
 - the named specialist question
 - relevant excerpt from `drafts/current.md`
-- the minimum necessary evidence subset
+- the minimum necessary evidence subset, drawn from `sources/external/**`
 - `state.json`
 
 Specialist does not read the whole project by default.

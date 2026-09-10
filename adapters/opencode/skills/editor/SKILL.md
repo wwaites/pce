@@ -14,7 +14,8 @@ Set the task, approve the source pack, route the review loop, and accept or reje
 ## Read Scope
 
 - `brief.md` if present
-- `sources/**` if present
+- `sources/internal/**` if present
+- `sources/external/**` if present
 - `drafts/current.md` if present
 - `claims/current.json` if present
 - `reviews/current/**` if present
@@ -26,7 +27,8 @@ Set the task, approve the source pack, route the review loop, and accept or reje
 ## Write Scope
 
 - `brief.md`
-- `sources/**`
+- `sources/internal/**`
+- `sources/external/**`
 - `state.json`
 - `reviews/editor-feedback.md`
 
@@ -35,7 +37,7 @@ Set the task, approve the source pack, route the review loop, and accept or reje
 1. Before creating workflow artifacts, ask which directory should hold them.
 2. For collaborative work, prefer a shared repository or document store over a private notes tree.
 3. Define audience, scope, acceptance bar, and output shape in `brief.md`.
-4. Curate the approved source pack before asking for factual drafting.
+4. Curate the approved external source pack in `sources/external/**` before asking for factual drafting. Keep editorial rationale and working notes in `sources/internal/**`, which no reviewer ever sees.
 5. Set risk level, pass limits, ordered `required_gates`, critic profiles, and specialist questions in `state.json`.
 6. Run configured formal gates sequentially after Author and Archivist finish. Do not run author, fact-checker, and critic in parallel as one formal pass.
 7. Use critic scores only as advisory signals. Do not accept or reject by numeric critic threshold alone; editor acceptance rests on concrete findings against the brief, source boundary, house style, and audience risk.

@@ -1,6 +1,6 @@
 ---
 name: fact-checker
-description: Fact checking, citations, evidence review, unsupported claims, or adversarial verification over drafts/current.md and sources/. Use when factual claims must be checked against approved sources.
+description: Fact checking, citations, evidence review, unsupported claims, or adversarial verification over drafts/current.md and sources/external/. Use when factual claims must be checked against approved external sources.
 ---
 
 # Fact-Checker
@@ -9,14 +9,14 @@ Fact-Checker verifies the draft against the sources.
 
 ## Purpose
 
-Check whether each material claim in the current draft is supported by the approved source pack.
+Check whether each material claim in the current draft is supported by the approved external source pack.
 
 ## Read Scope
 
 - `brief.md`
 - `drafts/current.md`
 - `claims/current.json`
-- `sources/**`
+- `sources/external/**`
 - `state.json`
 
 ## Write Scope
@@ -31,8 +31,9 @@ Check whether each material claim in the current draft is supported by the appro
 3. Cite evidence spans or source identifiers.
 4. Reject any claim that overstates the source.
 5. Do not introduce new unsupported facts while correcting old ones.
-6. Do not read previous reviews, previous fact checks, or editor-only notes.
-7. Write a uniquely named history record before updating `reviews/current/fact-check.json`.
+6. Do not read `sources/internal/**`.
+7. Do not read previous reviews, previous fact checks, or editor-only notes.
+8. Write a uniquely named history record before updating `reviews/current/fact-check.json`.
 
 ## Required Output Shape
 
@@ -43,7 +44,7 @@ Check whether each material claim in the current draft is supported by the appro
     {
       "id": "c1",
       "status": "supported",
-      "evidence": ["sources/doc-a.md:14-18"],
+      "evidence": ["sources/external/doc-a.md:14-18"],
       "notes": "Why this does or does not hold"
     }
   ],

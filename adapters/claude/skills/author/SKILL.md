@@ -14,7 +14,8 @@ Produce a clear draft from the approved remit and source pack.
 ## Read Scope
 
 - `brief.md`
-- `sources/**`
+- `sources/internal/**`
+- `sources/external/**`
 - `state.json`
 - `reviews/current/**` if present
 - `reviews/history/**` if present
@@ -27,7 +28,7 @@ Produce a clear draft from the approved remit and source pack.
 
 ## Rules
 
-1. Draft only from the brief and approved sources.
+1. Draft only from the brief and the approved external source pack. Treat `sources/internal/**` as editorial context, not citable evidence.
 2. Do not invent missing facts.
 3. If evidence is missing, mark the gap plainly.
 4. Keep the draft aligned to audience, scope, and acceptance bar.
