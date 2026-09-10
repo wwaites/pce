@@ -32,7 +32,7 @@ schemas/                  JSON schemas for shared artifacts
 templates/                starter artifacts for briefs, state, and reviews
 adapters/opencode/skills  opencode skill wrappers, including `editor`
 adapters/claude/skills    Claude skill wrappers, including `editor`
-packaging/                install scripts
+packaging/                install scripts and the run_loop.py runner
 flake.nix                 Nix package for reproducible installs
 ```
 
@@ -130,6 +130,25 @@ path-scoped permission system in common. A reviewer that finds material
 outside its Read Scope returns a `contaminated` verdict instead of using it;
 Editor discards that review and redispatches fresh.
 
+## Runner
+
+`packaging/run_loop.py` executes one bounded pass, author, archivist, then
+each gate in `state.json`'s `required_gates`, once each, no auto-revision
+retry. It dispatches every role as a real subprocess of the chosen runtime
+and implements workspace staging from `dispatch.md`: a reviewer's Read Scope
+is parsed directly from its `skills-core/<role>.md` section, and only the
+matching files are copied into a scratch directory the reviewer runs against.
+
+```bash
+python3 packaging/run_loop.py /path/to/workflow-dir --runtime claude
+python3 packaging/run_loop.py /path/to/workflow-dir --runtime opencode
+```
+
+The workflow directory must already hold `brief.md`, `sources/external/**`
+(and optionally `sources/internal/**`), and `state.json`; the runner creates
+`drafts/`, `claims/`, `reviews/`, and `revisions/` as needed. It prints a
+verdict summary and exits non-zero if any gate did not pass or approve.
+
 ## Packaging Modes
 
 ### Nix
@@ -171,7 +190,9 @@ This copies Shipshape's strongest packaging idea:
 
 ## Next Steps
 
-1. Add a tiny runner that executes one bounded review loop, including workspace staging per `dispatch.md`.
-2. Add a conformance check proving `critic` and `fact-checker` cannot read `sources/internal/**` when run against a staged workspace.
+1. Done: `packaging/run_loop.py` runs one bounded pass against Claude Code and opencode, staging each reviewer's workspace from its parsed Read Scope. Live-tested against both runtimes; no known gaps in the loop itself.
+2. Add a conformance check proving `critic` and `fact-checker` cannot read `sources/internal/**`, using `run_loop.py`'s own staging as the mechanism under test rather than re-implementing it.
 3. Add a conformance check proving accepted drafts do not carry unsupported claims.
-4. Add Codex and Pi adapters once each runtime's skill or extension install convention is confirmed; the dispatch ladder in `dispatch.md` already covers Pi's process-spawn-only model.
+4. Wire `required_gates: ["specialist"]` into `run_loop.py`; only `fact-checker` and `critic` are dispatched today.
+5. Add auto-revision looping to `run_loop.py` (redispatch `author` on a `revise`/`fail` verdict, up to `state.json`'s `max_passes`); the current runner reports one pass and stops.
+6. Add Codex and Pi adapters once each runtime's skill or extension install convention is confirmed; the dispatch ladder in `dispatch.md` already covers Pi's process-spawn-only model.

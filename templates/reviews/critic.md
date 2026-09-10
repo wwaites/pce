@@ -2,7 +2,7 @@
 
 - Profile:
 - Score:
-- Verdict: pass | revise
+- Verdict: pass | revise | contaminated
 - Strengths:
 - Risks:
 - Required revisions:

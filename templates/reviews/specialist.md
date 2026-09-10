@@ -2,6 +2,6 @@
 
 - Question id:
 - Specialist question:
-- Verdict: approve | revise | insufficient-evidence
+- Verdict: approve | revise | insufficient-evidence | contaminated
 - Findings:
 - Required corrections:

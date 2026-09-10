@@ -21,9 +21,9 @@ checks, and editor decisions can be reconstructed later.
 
 ## Write Scope
 
-- `revisions/history/<pass-id>-draft.<ext>`
-- `revisions/history/<pass-id>.md`
-- `reviews/history/<pass-id>-archive.md` when recording archival corrections or provenance notes
+- `revisions/history/<date>-<pass-id>-draft.<ext>`
+- `revisions/history/<date>-<pass-id>.md`
+- `reviews/history/<date>-<pass-id>-archive.md` when recording archival corrections or provenance notes
 
 ## Rules
 
