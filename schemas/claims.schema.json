@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/artificial-org/schemas/claims.schema.json",
+  "title": "Claims",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "text", "kind", "location", "status"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "text": {
+        "type": "string",
+        "minLength": 1
+      },
+      "kind": {
+        "type": "string",
+        "enum": ["fact", "quote", "number", "timeline", "definition", "other"]
+      },
+      "location": {
+        "type": "string",
+        "minLength": 1
+      },
+      "status": {
+        "type": "string",
+        "enum": ["needs-review", "supported", "weak", "unsupported"]
+      },
+      "notes": {
+        "type": "string"
+      }
+    }
+  }
+}

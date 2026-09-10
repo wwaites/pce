@@ -1,0 +1,9 @@
+{
+  "risk": "medium",
+  "max_passes": 3,
+  "required_gates": ["fact-checker"],
+  "critic_score_policy": "advisory-only",
+  "acceptance_policy": "editor judgement from concrete findings",
+  "critic_profiles": {},
+  "specialist_questions": {}
+}

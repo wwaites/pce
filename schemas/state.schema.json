@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/artificial-org/schemas/state.schema.json",
+  "title": "Workflow State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["risk", "max_passes", "required_gates", "critic_score_policy", "acceptance_policy"],
+  "properties": {
+    "risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "max_passes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "required_gates": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["fact-checker", "specialist", "critic"]
+      },
+      "uniqueItems": true
+    },
+    "critic_score_policy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acceptance_policy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "critic_profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["remit"],
+        "properties": {
+          "remit": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "specialist_questions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question"],
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "required_gates": {
+            "contains": {"const": "specialist"}
+          }
+        },
+        "required": ["required_gates"]
+      },
+      "then": {
+        "required": ["specialist_questions"],
+        "properties": {
+          "specialist_questions": {
+            "minProperties": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "required_gates": {
+            "contains": {"const": "critic"}
+          }
+        },
+        "required": ["required_gates"]
+      },
+      "then": {
+        "required": ["critic_profiles"],
+        "properties": {
+          "critic_profiles": {
+            "minProperties": 1
+          }
+        }
+      }
+    }
+  ]
+}
