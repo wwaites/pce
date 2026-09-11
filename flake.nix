@@ -8,6 +8,16 @@
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in {
+      devShells = forAllSystems (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in {
+          default = pkgs.mkShell {
+            packages = [
+              (pkgs.python3.withPackages (ps: [ ps.behave ps.coverage ]))
+            ];
+          };
+        });
       packages = forAllSystems (system:
         let
           pkgs = import nixpkgs { inherit system; };

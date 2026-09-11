@@ -12,8 +12,8 @@ Procedure lives in the skills. Every role reads this on open.
 ## Directories
 
 - implementation: packaging
-- specs:
-- verification:
+- specs: features
+- verification: features/steps
 - assets: skills-core
 - assets: templates
 - assets: adapters
@@ -22,11 +22,11 @@ Procedure lives in the skills. Every role reads this on open.
 
 ## Commands
 
-- discover:
-- focused:
-- broad:
-- coverage: none
-- step-usage:
+- discover: `nix develop --command behave --dry-run --no-summary --tags "not @captain and not @shipwright" features`
+- focused: `nix develop --command python3 -c "import re, subprocess, sys; files = {}; [files.setdefault(r.split('.feature:', 1)[0] + '.feature', []).append(r.split('.feature:', 1)[1]) for r in sys.argv[1:]]; args = ['behave', '--tags', 'not @captain and not @shipwright']; [args.extend(['-n', '^' + re.escape(n) + '\$']) for v in files.values() for n in v]; args.extend(files.keys()); sys.exit(subprocess.call(args))" {scenario}`
+- broad: `nix develop --command behave --no-summary --tags "not @captain and not @shipwright" features`
+- coverage: `nix develop --command bash -c 'coverage run --branch --source=packaging -m behave --no-summary --tags "not @captain and not @shipwright" features && coverage report -m'`
+- step-usage: `nix develop --command behave --dry-run --no-summary -f steps.usage features`
 - plank-inventory: `rg -n '@planks(-provisional)?\(' packaging`
 - typecheck: none
 - lint: none
@@ -40,8 +40,9 @@ Procedure lives in the skills. Every role reads this on open.
 ## Tiers
 
 - default: @logic
-- sandbox: none
+- sandbox: @sandbox
 - policy: @logic: none, pure local, no external accounts
+- policy: @sandbox: real claude or opencode CLI subprocess with live runtime credentials required; opt-in only, never part of the default @logic sweep
 - weather: none
 - runrecord: .shipshape/wake/run-record.jsonl
 
@@ -49,6 +50,7 @@ Procedure lives in the skills. Every role reads this on open.
 
 - policy: locked
 - dependency: behave
+- dependency: coverage
 
 ## Outbound
 

@@ -58,6 +58,10 @@ REQUIRED_POLICY = {
 
 
 def render(name: str, source_name: str, description: str) -> str:
+    """Render a runtime skill adapter's frontmatter and body from its canonical source.
+
+    @planks("adapters/{runtime}/skills/{name}/SKILL.md is written")
+    """
     if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
         raise ValueError(f"invalid skill name: {name!r}")
     if not description.strip() or "\n" in description:
@@ -69,6 +73,10 @@ def render(name: str, source_name: str, description: str) -> str:
 
 
 def validate_frontmatter(text: str, expected_name: str) -> None:
+    """Check a rendered adapter's frontmatter block carries exactly name and description.
+
+    @planks("adapters/{runtime}/skills/{name}/SKILL.md is written")
+    """
     opening, separator, remainder = text.partition("\n---\n")
     if not separator or not opening.startswith("---\n") or not remainder.strip():
         raise ValueError(f"invalid frontmatter block for {expected_name}")
@@ -85,6 +93,11 @@ def validate_frontmatter(text: str, expected_name: str) -> None:
 
 
 def check_policy() -> list[str]:
+    """Check every canonical source carries its required policy phrases and no forbidden pattern.
+
+    @planks('it names the missing policy phrase for "{source_path}"')
+    @planks('it names the forbidden pattern found in "{source_path}"')
+    """
     failures = []
     for source_name, required in REQUIRED_POLICY.items():
         text = (ROOT / "skills-core" / source_name).read_text(encoding="utf-8")
@@ -102,6 +115,12 @@ def check_policy() -> list[str]:
 
 
 def main() -> int:
+    """Generate or check every runtime skill adapter against its canonical source.
+
+    @planks("adapters/{runtime}/skills/{name}/SKILL.md is written")
+    @planks('it reports "{message}" for "{location}"')
+    @planks('it names "{filename}" as an unexpected file under "{location}"')
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()

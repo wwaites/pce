@@ -29,7 +29,10 @@ TIMEOUT_SECONDS = 600
 
 
 def parse_scope(role: str, heading: str) -> list[str]:
-    """Extract backtick-quoted path patterns from a role's Read Scope or Write Scope section."""
+    """Extract backtick-quoted path patterns from a role's Read Scope or Write Scope section.
+
+    @planks('it returns exactly the patterns "{p1}" and "{p2}"')
+    """
     text = (SKILLS_CORE / f"{role}.md").read_text(encoding="utf-8")
     lines = text.splitlines()
     try:
@@ -45,17 +48,28 @@ def parse_scope(role: str, heading: str) -> list[str]:
 
 
 def substitute(pattern: str, **placeholders: str) -> str:
+    """Replace each named placeholder with its value.
+
+    @planks('the resulting glob is "{expected}"')
+    """
     for key, value in placeholders.items():
         pattern = pattern.replace(f"<{key}>", value)
     return pattern
 
 
 def to_glob(pattern: str, **placeholders: str) -> str:
-    """Substitute known placeholders, then turn any remaining <...> token into a glob wildcard."""
+    """Substitute known placeholders, then turn any remaining <...> token into a glob wildcard.
+
+    @planks('the resulting glob is "{expected}"')
+    """
     return re.sub(r"<[^>]+>", "*", substitute(pattern, **placeholders))
 
 
 def stage_workspace(workflow_dir: Path, patterns: list[str]) -> Path:
+    """Copy every file matching a read-scope pattern into a fresh scratch directory.
+
+    @planks('the staged workspace does not contain "{relpath}"')
+    """
     staged = Path(tempfile.mkdtemp(prefix="pce-stage-"))
     for pattern in patterns:
         matches = globmod.glob(pattern, root_dir=workflow_dir, recursive=True)
@@ -74,6 +88,10 @@ def stage_workspace(workflow_dir: Path, patterns: list[str]) -> Path:
 
 
 def collect_back(staged: Path, workflow_dir: Path, patterns: list[str]) -> list[Path]:
+    """Copy every file matching a write-scope pattern back from the scratch directory.
+
+    @planks('the workflow directory contains "{relpath}"')
+    """
     written = []
     for pattern in patterns:
         matches = globmod.glob(pattern, root_dir=staged, recursive=True)
@@ -89,6 +107,10 @@ def collect_back(staged: Path, workflow_dir: Path, patterns: list[str]) -> list[
 
 
 def run_claude(system_prompt: str, message: str, cwd: Path) -> str:
+    """Run one bounded claude CLI turn with the given system prompt and task.
+
+    @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    """
     cmd = [
         "claude", "-p", message,
         "--append-system-prompt", system_prompt,
@@ -104,6 +126,10 @@ def run_claude(system_prompt: str, message: str, cwd: Path) -> str:
 
 
 def run_opencode(system_prompt: str, message: str, cwd: Path) -> str:
+    """Run one bounded opencode CLI turn with the given system prompt and task.
+
+    @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    """
     combined = f"{system_prompt}\n\n---\n\nTask:\n\n{message}"
     cmd = ["opencode", "run", combined, "--dir", str(cwd), "--format", "json"]
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS)
@@ -113,6 +139,10 @@ def run_opencode(system_prompt: str, message: str, cwd: Path) -> str:
 
 
 def dispatch(runtime: str, role: str, task: str, cwd: Path) -> str:
+    """Load a role's skill contract and run it as one turn of the chosen runtime.
+
+    @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    """
     skill = (SKILLS_CORE / f"{role}.md").read_text(encoding="utf-8")
     print(f"    -> dispatching {role} ({runtime}) in {cwd}", file=sys.stderr)
     if runtime == "claude":
@@ -121,16 +151,29 @@ def dispatch(runtime: str, role: str, task: str, cwd: Path) -> str:
 
 
 def schema_text(name: str) -> str:
+    """Read a named JSON Schema from the shared schemas/ directory.
+
+    @planks('it prints the fact-checker verdict and the critic verdict in its summary')
+    """
     return (ROOT / "schemas" / name).read_text(encoding="utf-8")
 
 
+def build_dispatch_task(role: str) -> str:
+    """Load a role's task-prompt text from its template file, not a hardcoded string.
+
+    @planks("the task argument that call passes to dispatch() starts with the content of templates/prompts/{role}-task.md")
+    """
+    return (ROOT / "templates" / "prompts" / f"{role}-task.md").read_text(encoding="utf-8")
+
+
 def run_author(runtime: str, workflow_dir: Path) -> None:
-    task = (
-        "Read brief.md and the approved source pack in this directory, per your Read Scope. "
-        "Write your draft to drafts/current.md. Extract material factual claims into "
-        "claims/current.json using exactly this JSON Schema shape, an array of claim objects, "
-        f"claim ids c1, c2, ...:\n\n{schema_text('claims.schema.json')}"
-    )
+    """Dispatch the author role and require its draft and claims outputs.
+
+    @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks("the task argument that call passes to dispatch() starts with the content of templates/prompts/{role}-task.md")
+    @planks("run_loop.py contains no hardcoded English sentence as that role's task text")
+    """
+    task = build_dispatch_task("author") + schema_text("claims.schema.json")
     dispatch(runtime, "author", task, workflow_dir)
     if not (workflow_dir / "drafts" / "current.md").is_file():
         raise RuntimeError("author did not write drafts/current.md")
@@ -139,11 +182,13 @@ def run_author(runtime: str, workflow_dir: Path) -> None:
 
 
 def run_archivist(runtime: str, workflow_dir: Path) -> None:
-    task = (
-        f"Pass id \"{PASS_ID}\". Preserve the full text of drafts/current.md and a revision note "
-        "under revisions/history/, per your Write Scope and Rule 3 above (unique, sortable "
-        "filenames that include the date and pass id)."
-    )
+    """Dispatch the archivist role and require a preserved draft snapshot.
+
+    @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks("the task argument that call passes to dispatch() starts with the content of templates/prompts/{role}-task.md")
+    @planks("run_loop.py contains no hardcoded English sentence as that role's task text")
+    """
+    task = build_dispatch_task("archivist") + PASS_ID
     dispatch(runtime, "archivist", task, workflow_dir)
     draft_glob = to_glob(parse_scope("archivist", "## Write Scope")[0], **{"pass-id": PASS_ID})
     if not globmod.glob(draft_glob, root_dir=workflow_dir):
@@ -151,6 +196,14 @@ def run_archivist(runtime: str, workflow_dir: Path) -> None:
 
 
 def run_fact_checker(runtime: str, workflow_dir: Path) -> dict:
+    """Dispatch the fact-checker role in an isolated staged workspace and collect its verdict.
+
+    @planks('the staged workspace does not contain "{relpath}"')
+    @planks('the workflow directory contains "{relpath}"')
+    @planks('it prints the fact-checker verdict and the critic verdict in its summary')
+    @planks("the task argument that call passes to dispatch() starts with the content of templates/prompts/{role}-task.md")
+    @planks("run_loop.py contains no hardcoded English sentence as that role's task text")
+    """
     read_patterns = parse_scope("fact-checker", "## Read Scope")
     write_patterns = [
         substitute(p, **{"pass-id": PASS_ID}) for p in parse_scope("fact-checker", "## Write Scope")
@@ -158,11 +211,9 @@ def run_fact_checker(runtime: str, workflow_dir: Path) -> dict:
     staged = stage_workspace(workflow_dir, read_patterns)
     try:
         task = (
-            f"Pass id \"{PASS_ID}\". This workspace contains only your Read Scope; "
-            "sources/internal/** is intentionally absent. Check every claim in "
-            "claims/current.json against sources/external/**. Write your verdict to "
-            f"reviews/history/{PASS_ID}-fact-check.json and reviews/current/fact-check.json "
-            f"using exactly this JSON Schema shape:\n\n{schema_text('fact-check.schema.json')}"
+            build_dispatch_task("fact-checker")
+            + PASS_ID
+            + schema_text("fact-check.schema.json")
         )
         dispatch(runtime, "fact-checker", task, staged)
         current = staged / "reviews" / "current" / "fact-check.json"
@@ -176,6 +227,14 @@ def run_fact_checker(runtime: str, workflow_dir: Path) -> dict:
 
 
 def run_critic(runtime: str, workflow_dir: Path, profile_id: str, remit: str) -> dict:
+    """Dispatch a critic profile in an isolated staged workspace and collect its verdict.
+
+    @planks('the staged workspace does not contain "{relpath}"')
+    @planks('the workflow directory contains "{relpath}"')
+    @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks("the task argument that call passes to dispatch() starts with the content of templates/prompts/{role}-task.md")
+    @planks("run_loop.py contains no hardcoded English sentence as that role's task text")
+    """
     read_patterns = parse_scope("critic", "## Read Scope")
     write_patterns = [
         substitute(p, **{"pass-id": PASS_ID, "profile-id": profile_id})
@@ -184,11 +243,8 @@ def run_critic(runtime: str, workflow_dir: Path, profile_id: str, remit: str) ->
     staged = stage_workspace(workflow_dir, read_patterns)
     try:
         task = (
-            f"Pass id \"{PASS_ID}\", profile id \"{profile_id}\". Profile remit: {remit}. "
-            "This workspace contains only your Read Scope; sources/**, prior reviews, and "
-            "editor-only notes are intentionally absent. Review drafts/current.md fresh. "
-            f"Write your review to reviews/history/{PASS_ID}-{profile_id}-critic.md and "
-            f"reviews/current/critic-{profile_id}.md using exactly this shape:\n\n"
+            build_dispatch_task("critic")
+            + f"{PASS_ID}\n{profile_id}\n{remit}\n\n"
             + (ROOT / "templates" / "reviews" / "critic.md").read_text(encoding="utf-8")
         )
         dispatch(runtime, "critic", task, staged)
@@ -204,6 +260,11 @@ def run_critic(runtime: str, workflow_dir: Path, profile_id: str, remit: str) ->
 
 
 def main() -> int:
+    """Run one bounded pass: author, archivist, then each configured gate in state.json.
+
+    @planks('it reports that "{filename}" was not found')
+    @planks('it exits 0 only when every verdict is "pass" or "approve"')
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workflow_dir", type=Path, help="Project workspace holding brief.md, sources/, etc.")
     parser.add_argument("--runtime", choices=["claude", "opencode"], required=True)

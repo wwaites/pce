@@ -2,7 +2,7 @@
   "$comment": "Derived verification-conformance rule set. Guards Shipshape methodology in this project's own verification support, not product behaviour. Derived by Shipwright at fitting out per the Shipwright skill's Methodology checks. No named structural-query engine is available for a Python-only stack at this fitting-out pass, so rules are plain text-pattern checks run through the stack's own runtime (python3), per the text-search fallback the Check tooling clause names. A rule's checker logic belongs in the promoted @conformance scenario's step definitions, written by QM; this file lists the rules only.",
   "stack": "python",
   "engine": "text-pattern (no structural-query engine derived for this stack at this pass)",
-  "status": "unreferenced: no scenario yet attests these rules, per the Scantling agreement. This project has no Gherkin runner selected, see RIGGING.md blank focused/discover/step-usage/specs slots and the Shipwright harbour report. Wire a referencing @conformance scenario once the runner is chosen.",
+  "status": "referenced and proven: features/methodology.feature's \"Verification-conformance rule set catches a malformed plank\" scenario (@conformance) attests the plank-form rule, adoption-proof plant/red/remove/green completed by QM, currently green.",
   "rules": [
     {
       "id": "plank-form",
@@ -22,7 +22,7 @@
       "redden_on": [
         "a step-definition pattern with no matching @planks token"
       ],
-      "proof": "blocked until a Gherkin runner is selected and step-usage exists; QM proves this at adoption once wired."
+      "proof": "step-usage now exists (behave); QM proves this at adoption when a referencing scenario is promoted."
     },
     {
       "id": "perturbation-quiescence-support",
