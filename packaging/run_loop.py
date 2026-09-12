@@ -263,6 +263,7 @@ def main() -> int:
     """Run one bounded pass: author, archivist, then each configured gate in state.json.
 
     @planks('it reports that "{filename}" was not found')
+    @planks('it exits with status {code:d}')
     @planks('it exits 0 only when every verdict is "pass" or "approve"')
     """
     parser = argparse.ArgumentParser(description=__doc__)

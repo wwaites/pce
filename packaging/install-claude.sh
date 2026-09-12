@@ -4,6 +4,7 @@
 #
 # @planks('"{skill_dir}" contains one directory per skill under adapters/{runtime}/skills')
 # @planks('"{path}" no longer contains "{filename}"')
+# @planks('"{path}" matches adapters/{runtime}/skills/{name}/SKILL.md')
 set -euo pipefail
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"

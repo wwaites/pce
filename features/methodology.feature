@@ -22,3 +22,10 @@ Feature: Shipshape methodology conformance
     And a "@planks" token placed in a bare line comment outside any docstring
     When the conformance check runs against the "plank-form" rule
     Then the check reddens naming the malformed plank
+
+  @conformance @captain
+  Scenario: Verification-conformance rule set catches a missing plank
+    Given the rule set at "scantlings/verification-conformance.json"
+    And a behaviour-bearing step-definition pattern reported by step-usage with no matching plank token in the implementation paths
+    When the conformance check runs against the "plank-coverage" rule
+    Then the check reddens naming the uncovered step-definition pattern
