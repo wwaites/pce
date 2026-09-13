@@ -1,0 +1,18 @@
+{
+  "watch1": {
+    "scenarios": [
+      "features/schemas.feature:A shared schema is valid JSON Schema"
+    ]
+  },
+  "watch2": {
+    "scenarios": [
+      "features/methodology.feature:Verification-conformance rule set catches a missing plank",
+      "features/methodology.feature:The focused command selects exactly one example of a Scenario Outline"
+    ]
+  },
+  "watch3": {
+    "scenarios": [
+      "features/methodology.feature:Packaging sources discharge the configured lint checker"
+    ]
+  }
+}

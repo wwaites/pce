@@ -23,9 +23,22 @@ Feature: Shipshape methodology conformance
     When the conformance check runs against the "plank-form" rule
     Then the check reddens naming the malformed plank
 
-  @conformance @captain
+  @conformance
   Scenario: Verification-conformance rule set catches a missing plank
     Given the rule set at "scantlings/verification-conformance.json"
     And a behaviour-bearing step-definition pattern reported by step-usage with no matching plank token in the implementation paths
     When the conformance check runs against the "plank-coverage" rule
     Then the check reddens naming the uncovered step-definition pattern
+
+  @conformance
+  Scenario: The focused command selects exactly one example of a Scenario Outline
+    Given a scenario reference naming one specific example row of a Scenario Outline
+    When the "focused" command from RIGGING.md runs against that reference
+    Then exactly one scenario runs
+    And it is the named example, not zero examples and not every example
+
+  @conformance
+  Scenario: Packaging sources discharge the configured lint checker
+    Given the "lint" command from RIGGING.md
+    When it runs against the current text of "packaging"
+    Then it exits 0
