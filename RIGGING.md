@@ -24,10 +24,12 @@ Procedure lives in the skills. Every role reads this on open.
 
 - discover: `nix develop --command behave --dry-run --no-summary --tags "not @captain and not @shipwright" features`
 - focused: `nix develop --command python3 -c "import re, subprocess, sys; files = {}; [files.setdefault(r.split('.feature:', 1)[0] + '.feature', []).append(r.split('.feature:', 1)[1]) for r in sys.argv[1:]]; args = ['behave', '--tags', 'not @captain and not @shipwright']; [args.extend(['-n', '^' + re.escape(n) + '\$']) for v in files.values() for n in v]; args.extend(files.keys()); sys.exit(subprocess.call(args))" {scenario}`
-- broad: `nix develop --command behave --no-summary --tags "not @captain and not @shipwright" features`
-- coverage: `nix develop --command bash -c 'coverage run --branch --source=packaging -m behave --no-summary --tags "not @captain and not @shipwright" features && coverage report -m'`
+- broad: `nix develop --command behave --no-summary --tags "not @sandbox and not @captain and not @shipwright" features`
+- broad-sandbox: `nix develop --command behave --no-summary --tags "@sandbox and not @captain and not @shipwright" features`
+- coverage: `nix develop --command bash -c 'coverage run --branch --source=packaging -m behave --no-summary --tags "not @sandbox and not @captain and not @shipwright" features && coverage report -m'`
+- coverage-sandbox: `nix develop --command bash -c 'coverage run --branch --source=packaging -m behave --no-summary --tags "@sandbox and not @captain and not @shipwright" features && coverage report -m'`
 - step-usage: `nix develop --command behave --dry-run --no-summary -f steps.usage features`
-- plank-inventory: `rg -n '@planks(-provisional)?\(' packaging`
+- plank-inventory: `rg -n '@planks\(|@planks-provisional\(' packaging`
 - typecheck: none
 - lint: none
 - conformance: `python3 packaging/sync-adapters.py --check`
