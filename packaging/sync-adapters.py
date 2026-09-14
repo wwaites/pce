@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Generate runtime skill adapters from the canonical role contracts."""
-
 from __future__ import annotations
 
 import argparse
 import difflib
 import re
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIMES = ("opencode", "claude")

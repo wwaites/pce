@@ -15,6 +15,7 @@
           default = pkgs.mkShell {
             packages = [
               (pkgs.python3.withPackages (ps: [ ps.behave ps.coverage ]))
+              pkgs.ruff
             ];
           };
         });

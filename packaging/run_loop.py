@@ -119,7 +119,9 @@ def run_claude(system_prompt: str, message: str, cwd: Path) -> str:
         "--no-session-persistence",
         "--output-format", "json",
     ]
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS)
+    result = subprocess.run(
+        cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=False
+    )
     if result.returncode != 0:
         raise RuntimeError(f"claude exited {result.returncode}: {result.stderr[-2000:]}")
     return result.stdout
@@ -132,7 +134,9 @@ def run_opencode(system_prompt: str, message: str, cwd: Path) -> str:
     """
     combined = f"{system_prompt}\n\n---\n\nTask:\n\n{message}"
     cmd = ["opencode", "run", combined, "--dir", str(cwd), "--format", "json"]
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS)
+    result = subprocess.run(
+        cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=False
+    )
     if result.returncode != 0:
         raise RuntimeError(f"opencode exited {result.returncode}: {result.stderr[-2000:]}")
     return result.stdout

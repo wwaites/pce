@@ -14,10 +14,11 @@ from __future__ import annotations
 import ast
 import json
 import re
+from pathlib import Path
 
 from behave import given, when, then
 
-from support import REPO_ROOT, new_tmp_dir
+from support import REPO_ROOT, new_tmp_dir, run_rigging_command
 
 TIER_TAGS = {"@logic", "@sandbox"}
 SCENARIO_REF_RE = re.compile(r"^features/[^:]+\.feature:.+$")
@@ -157,11 +158,131 @@ def step_plant_bad_plank(context, token):
 
 @when('the conformance check runs against the "{rule_id}" rule')
 def step_run_conformance_check(context, rule_id):
-    assert rule_id == "plank-form", rule_id
-    context.violations = check_plank_form(context.fixture_dir)
+    if rule_id == "plank-form":
+        context.violations = check_plank_form(context.fixture_dir)
+    elif rule_id == "plank-coverage":
+        context.violations = check_plank_coverage(context.coverage_steps_dir, context.coverage_impl_dir)
+    else:
+        raise ValueError(f"unknown rule_id {rule_id!r}")
 
 
 @then('the check reddens naming the malformed plank')
 def step_check_reddens(context):
     assert context.violations, "expected plank-form check to report a violation"
     assert any("bad_seam.py" in v for v in context.violations), context.violations
+
+
+# --- plank coverage --------------------------------------------------------
+
+WHEN_PATTERN_RE = re.compile(r"@when\(\s*['\"](.+?)['\"]\s*\)")
+PLANK_STRING_RE = re.compile(r"@planks\(\s*['\"](.+?)['\"]\s*\)")
+
+
+def check_plank_coverage(steps_dir, impl_dir):
+    """Every When-bound step-definition pattern is behaviour-bearing, per the
+    scenario-writing agreement (When is one named action). It needs at least
+    one exact-string @planks(...) match somewhere under impl_dir. Given/Then
+    patterns are setup or assertion and carry no coverage obligation, per the
+    Planking agreement.
+    """
+    patterns = []
+    for path in sorted(Path(steps_dir).rglob("*.py")):
+        patterns.extend(WHEN_PATTERN_RE.findall(path.read_text(encoding="utf-8")))
+
+    plank_strings = set()
+    for path in sorted(Path(impl_dir).rglob("*.py")):
+        plank_strings.update(PLANK_STRING_RE.findall(path.read_text(encoding="utf-8")))
+
+    return [p for p in patterns if p not in plank_strings]
+
+
+@given('a behaviour-bearing step-definition pattern reported by step-usage with no matching plank token in the implementation paths')
+def step_plant_missing_plank(context):
+    context.fixture_dir = new_tmp_dir(context, "pce-plankcoverage-")
+    steps_dir = context.fixture_dir / "steps"
+    steps_dir.mkdir()
+    (steps_dir / "orphan_steps.py").write_text(
+        "from behave import when\n\n"
+        "@when('a doubloon is minted')\n"
+        "def step_impl(context):\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    impl_dir = context.fixture_dir / "impl"
+    impl_dir.mkdir()
+    (impl_dir / "seam.py").write_text(
+        "def unrelated_seam():\n"
+        '    """@planks(\'a different behaviour happens\')"""\n'
+        "    return 1\n",
+        encoding="utf-8",
+    )
+    context.coverage_steps_dir = steps_dir
+    context.coverage_impl_dir = impl_dir
+
+
+@then('the check reddens naming the uncovered step-definition pattern')
+def step_check_reddens_uncovered(context):
+    assert context.violations, "expected plank-coverage check to report a violation"
+    assert any("a doubloon is minted" in v for v in context.violations), context.violations
+
+
+# --- focused command selects one outline example --------------------------
+
+SUMMARY_RE = re.compile(
+    r"(?P<passed>\d+) scenarios? passed, (?P<failed>\d+) failed"
+    r"(?:, (?P<errored>\d+) error)?, (?P<skipped>\d+) skipped"
+)
+
+
+@given('a scenario reference naming one specific example row of a Scenario Outline')
+def step_outline_reference(context):
+    context.outline_reference = "features/schemas.feature:A shared schema is valid JSON Schema -- @1.1 "
+
+
+@when('the "focused" command from RIGGING.md runs against that reference')
+def step_run_focused_on_reference(context):
+    context.focused_result = run_rigging_command(
+        "focused", scenario_args=[context.outline_reference], timeout=120
+    )
+
+
+@then('exactly one scenario runs')
+def step_exactly_one_scenario(context):
+    output = context.focused_result.stdout + context.focused_result.stderr
+    match = SUMMARY_RE.search(output)
+    assert match, f"no scenario summary line found: {output}"
+    selected = int(match.group("passed")) + int(match.group("failed")) + int(match.group("errored") or 0)
+    assert selected == 1, f"expected exactly 1 scenario selected, got {selected}: {output}"
+
+
+@then('it is the named example, not zero examples and not every example')
+def step_named_example(context):
+    """Behave's listing prints every example row's concrete step text
+    regardless of selection, so text presence alone cannot tell selected
+    from unselected. A row's step is bound to a real step-definition
+    location only when it actually ran; an unselected row shows "# None".
+    """
+    output = context.focused_result.stdout + context.focused_result.stderr
+    assert re.search(r"schemas/claims\.schema\.json.*schemas_steps\.py", output), output
+    assert not re.search(r"schemas/fact-check\.schema\.json.*schemas_steps\.py", output), output
+    assert not re.search(r"schemas/state\.schema\.json.*schemas_steps\.py", output), output
+
+
+# --- lint discharges cleanly ------------------------------------------------
+
+@given('the "lint" command from RIGGING.md')
+def step_lint_command(context):
+    context.lint_target = "packaging"
+
+
+@when('it runs against the current text of "{dirname}"')
+def step_run_lint(context, dirname):
+    assert dirname == context.lint_target, (dirname, context.lint_target)
+    context.lint_result = run_rigging_command("lint", timeout=120)
+
+
+@then('it exits 0')
+def step_lint_exits_zero(context):
+    assert context.lint_result.returncode == 0, (
+        context.lint_result.stdout + context.lint_result.stderr
+    )
