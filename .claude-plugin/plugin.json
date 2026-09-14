@@ -1,0 +1,10 @@
+{
+  "name": "pce",
+  "version": "0.1.0",
+  "description": "Artificial Organisations skill pack: runtime-neutral role contracts for source-grounded drafting, adversarial fact-checking, and blind review.",
+  "author": {
+    "name": "William Waites"
+  },
+  "repository": "https://github.com/wwaites/pce",
+  "license": "0BSD"
+}

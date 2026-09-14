@@ -1,0 +1,12 @@
+{
+  "name": "pce",
+  "owner": {
+    "name": "William Waites"
+  },
+  "plugins": [
+    {
+      "name": "pce",
+      "source": "./"
+    }
+  ]
+}

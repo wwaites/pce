@@ -116,6 +116,7 @@ def main() -> int:
     """Generate or check every runtime skill adapter against its canonical source.
 
     @planks("adapters/{runtime}/skills/{name}/SKILL.md is written")
+    @planks("skills/{name}/SKILL.md is written")
     @planks('it reports "{message}" for "{location}"')
     @planks('it names "{filename}" as an unexpected file under "{location}"')
     """
@@ -170,6 +171,32 @@ def main() -> int:
                 )
             else:
                 destination.write_text(expected, encoding="utf-8")
+
+    for name, (source_name, description) in SKILLS.items():
+        destination = ROOT / "skills" / name / "SKILL.md"
+        if not destination.parent.exists():
+            if args.check:
+                continue
+            destination.parent.mkdir(parents=True)
+        expected = render(name, source_name, description)
+        actual = destination.read_text(encoding="utf-8") if destination.exists() else ""
+        if actual == expected:
+            continue
+        if args.check:
+            failures.append(f"skills/{name}: generated adapter drift")
+            print(
+                "".join(
+                    difflib.unified_diff(
+                        actual.splitlines(keepends=True),
+                        expected.splitlines(keepends=True),
+                        fromfile=str(destination),
+                        tofile=f"generated from skills-core/{source_name}",
+                    )
+                ),
+                end="",
+            )
+        else:
+            destination.write_text(expected, encoding="utf-8")
 
     if failures:
         print("\n".join(failures))

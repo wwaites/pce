@@ -12,7 +12,9 @@ Feature: Shared artifact schemas
     And its "$schema" field declares a JSON Schema draft
 
     Examples:
-      | schema                 |
-      | claims.schema.json     |
-      | fact-check.schema.json |
-      | state.schema.json      |
+      | schema                   |
+      | claims.schema.json       |
+      | fact-check.schema.json   |
+      | state.schema.json        |
+      | plugin.schema.json       |
+      | marketplace.schema.json  |

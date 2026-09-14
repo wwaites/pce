@@ -1,8 +1,9 @@
 Feature: Runtime skill adapter generation
 
-  Rule: Adapters under adapters/opencode/skills and adapters/claude/skills
-  are generated from the canonical role contracts under skills-core. Nobody
-  hand-edits a generated adapter file.
+  Rule: Adapters under adapters/opencode/skills and adapters/claude/skills,
+  and the plugin-root skills/ directory that Claude Code's plugin loader
+  auto-discovers, are generated from the canonical role contracts under
+  skills-core. Nobody hand-edits a generated adapter file.
 
   Scenario: Sync writes a missing adapter file from its canonical source
     Given adapters/claude/skills/archivist/SKILL.md does not exist
@@ -39,3 +40,16 @@ Feature: Runtime skill adapter generation
     When sync-adapters.py runs with "--check"
     Then the check exits non-zero
     And it names "notes.txt" as an unexpected file under "claude/fact-checker"
+
+  Scenario: Sync writes the plugin-root skill copy identical to the Claude adapter
+    Given the plugin-root copy of skills/archivist/SKILL.md does not exist
+    When sync-adapters.py runs without "--check"
+    Then skills/archivist/SKILL.md is written
+    And its body is the current text of skills-core/archivist.md
+
+  @contract
+  Scenario: Check fails when the plugin-root skill copy has drifted from the Claude adapter
+    Given the plugin-root copy of skills/editor/SKILL.md differs from the text sync-adapters.py would generate
+    When sync-adapters.py runs with "--check"
+    Then the check exits non-zero
+    And it reports "generated adapter drift" for "skills/editor"

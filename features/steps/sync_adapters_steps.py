@@ -72,6 +72,23 @@ def step_drift_adapter(context, runtime, name):
     path.write_text(path.read_text(encoding="utf-8") + "\nstale hand-edit\n", encoding="utf-8")
 
 
+@given('the plugin-root copy of skills/{name}/SKILL.md does not exist')
+def step_missing_plugin_root_skill(context, name):
+    context.tmp_root = build_fixture(context)
+    target = context.tmp_root / "skills" / name / "SKILL.md"
+    if target.exists():
+        target.unlink()
+
+
+@given('the plugin-root copy of skills/{name}/SKILL.md differs from the text sync-adapters.py would generate')
+def step_drift_plugin_root_skill(context, name):
+    context.tmp_root = build_fixture(context)
+    claude_copy = context.tmp_root / "adapters" / "claude" / "skills" / name / "SKILL.md"
+    target = context.tmp_root / "skills" / name / "SKILL.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(claude_copy.read_text(encoding="utf-8") + "\nstale hand-edit\n", encoding="utf-8")
+
+
 @given('adapters/{runtime}/skills/{name}/ contains an extra file "{filename}"')
 def step_extra_file(context, runtime, name, filename):
     context.tmp_root = build_fixture(context)
@@ -100,6 +117,16 @@ def _run_sync(context, check):
 @then('adapters/{runtime}/skills/{name}/SKILL.md is written')
 def step_check_written(context, runtime, name):
     path = context.tmp_root / "adapters" / runtime / "skills" / name / "SKILL.md"
+    assert path.is_file(), (
+        f"expected {path} to be written; "
+        f"stdout={context.result.stdout} stderr={context.result.stderr}"
+    )
+    context.written_path = path
+
+
+@then('skills/{name}/SKILL.md is written')
+def step_check_plugin_root_written(context, name):
+    path = context.tmp_root / "skills" / name / "SKILL.md"
     assert path.is_file(), (
         f"expected {path} to be written; "
         f"stdout={context.result.stdout} stderr={context.result.stderr}"
