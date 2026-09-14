@@ -30,6 +30,22 @@ Binding behaviour lives in `.feature` specs and referenced `assets/**`. History 
   README/AGENTS.md documentation of the new install path is also left for
   later (out of Captain's write scope; not required by any scenario above).
 
+- 2026-09-14: Same voyage, follow-up watch — Boatswain's post-implementation
+  custody (commit `eca6fed`) flagged a real gap after the first three watches
+  landed: `sync-adapters.py --check` silently passes when the plugin-root
+  `skills/` directory is wholly absent (no top-level "missing root" failure,
+  unlike the sibling `adapters/{runtime}/skills` loop), and the committed
+  repo in fact has no `skills/` directory yet — so the plugin as shipped
+  currently carries zero skills. Decided to fix by spec, not by hand: added
+  an isolated-fixture `@contract` scenario in `sync-adapters.feature` pinning
+  the missing-root failure, and a `@conformance` scenario in
+  `methodology.feature` running the real `conformance` command (RIGGING.md)
+  against the live tree — the latter forces Crew to actually run the
+  generator for real, not just fix the isolated-fixture check, since it will
+  stay red until `skills/` is genuinely populated in the committed tree.
+  Watchbill rewritten to just these two (watch1); the first three watches
+  already struck and committed.
+
 - 2026-09-14: Fixed RIGGING.md's `focused` command's Scenario Outline regex
   directly (Captain's authority at sea), rather than a third Shipwright
   dispatch. Two prior Shipwright passes (one full, one scoped to

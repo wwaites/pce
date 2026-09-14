@@ -53,3 +53,10 @@ Feature: Runtime skill adapter generation
     When sync-adapters.py runs with "--check"
     Then the check exits non-zero
     And it reports "generated adapter drift" for "skills/editor"
+
+  @contract
+  Scenario: Check fails when the plugin-root skills directory does not exist at all
+    Given the plugin-root skills directory does not exist
+    When sync-adapters.py runs with "--check"
+    Then the check exits non-zero
+    And it names "skills" as missing

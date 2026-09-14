@@ -89,6 +89,14 @@ def step_drift_plugin_root_skill(context, name):
     target.write_text(claude_copy.read_text(encoding="utf-8") + "\nstale hand-edit\n", encoding="utf-8")
 
 
+@given('the plugin-root skills directory does not exist')
+def step_missing_plugin_root_dir(context):
+    context.tmp_root = build_fixture(context)
+    target = context.tmp_root / "skills"
+    if target.exists():
+        shutil.rmtree(target)
+
+
 @given('adapters/{runtime}/skills/{name}/ contains an extra file "{filename}"')
 def step_extra_file(context, runtime, name, filename):
     context.tmp_root = build_fixture(context)
@@ -190,3 +198,10 @@ def step_names_unexpected(context, filename, location):
     output = context.result.stdout + context.result.stderr
     assert location in output, output
     assert filename in output, output
+
+
+@then('it names "{name}" as missing')
+def step_names_top_level_missing(context, name):
+    output = context.result.stdout + context.result.stderr
+    assert name in output, output
+    assert "missing" in output, output

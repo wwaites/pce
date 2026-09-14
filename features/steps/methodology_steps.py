@@ -268,21 +268,34 @@ def step_named_example(context):
     assert not re.search(r"schemas/state\.schema\.json.*schemas_steps\.py", output), output
 
 
-# --- lint discharges cleanly ------------------------------------------------
+# --- rigging command discharges cleanly -------------------------------------
 
 @given('the "lint" command from RIGGING.md')
 def step_lint_command(context):
-    context.lint_target = "packaging"
+    context.rigging_command_key = "lint"
+    context.rigging_command_target = "packaging"
+
+
+@given('the "conformance" command from RIGGING.md')
+def step_conformance_command(context):
+    context.rigging_command_key = "conformance"
+    context.rigging_command_target = "repository"
 
 
 @when('it runs against the current text of "{dirname}"')
-def step_run_lint(context, dirname):
-    assert dirname == context.lint_target, (dirname, context.lint_target)
-    context.lint_result = run_rigging_command("lint", timeout=120)
+def step_run_rigging_command_dirname(context, dirname):
+    assert dirname == context.rigging_command_target, (dirname, context.rigging_command_target)
+    context.command_result = run_rigging_command(context.rigging_command_key, timeout=120)
+
+
+@when('it runs against the current text of the repository')
+def step_run_rigging_command_repo(context):
+    assert context.rigging_command_target == "repository", context.rigging_command_target
+    context.command_result = run_rigging_command(context.rigging_command_key, timeout=120)
 
 
 @then('it exits 0')
-def step_lint_exits_zero(context):
-    assert context.lint_result.returncode == 0, (
-        context.lint_result.stdout + context.lint_result.stderr
+def step_command_exits_zero(context):
+    assert context.command_result.returncode == 0, (
+        context.command_result.stdout + context.command_result.stderr
     )

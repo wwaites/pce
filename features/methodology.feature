@@ -42,3 +42,9 @@ Feature: Shipshape methodology conformance
     Given the "lint" command from RIGGING.md
     When it runs against the current text of "packaging"
     Then it exits 0
+
+  @conformance
+  Scenario: The committed tree discharges the configured conformance checker
+    Given the "conformance" command from RIGGING.md
+    When it runs against the current text of the repository
+    Then it exits 0

@@ -119,6 +119,7 @@ def main() -> int:
     @planks("skills/{name}/SKILL.md is written")
     @planks('it reports "{message}" for "{location}"')
     @planks('it names "{filename}" as an unexpected file under "{location}"')
+    @planks('it names "{name}" as missing')
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
@@ -171,6 +172,13 @@ def main() -> int:
                 )
             else:
                 destination.write_text(expected, encoding="utf-8")
+
+    skills_root = ROOT / "skills"
+    if not skills_root.exists():
+        if args.check:
+            failures.append(f"skills: missing plugin-root directory {skills_root}")
+        else:
+            skills_root.mkdir(parents=True)
 
     for name, (source_name, description) in SKILLS.items():
         destination = ROOT / "skills" / name / "SKILL.md"
