@@ -18,3 +18,4 @@ Feature: Shared artifact schemas
       | state.schema.json        |
       | plugin.schema.json       |
       | marketplace.schema.json  |
+      | accounting.schema.json   |

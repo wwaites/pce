@@ -55,6 +55,53 @@ Binding behaviour lives in `.feature` specs and referenced `assets/**`. History 
   by direct execution before committing to it: an Outline reference now
   selects all examples, a plain scenario reference still selects exactly one.
 
+- 2026-09-15: New voyage — accounting ledger for the artificial-organisation
+  workflow. User asked whether `revisions/history/` could carry token usage,
+  tool calls, model, and estimated spend. Investigated before specifying:
+  `packaging/run_loop.py` already runs each role as a real `claude -p` or
+  `opencode run` CLI subprocess and captures the full JSON response
+  (`result.stdout`) but discards everything except the role's own output
+  file — the raw numbers were never missing, just thrown away. Empirically
+  grounded (small real API calls, not guessed) what each of three runtimes
+  reports in that response:
+  - `claude --output-format json`: `total_cost_usd`, `usage.{input_tokens,
+    output_tokens,cache_creation_input_tokens,cache_read_input_tokens}`,
+    `modelUsage` (keyed by model name), `duration_ms`.
+  - `opencode run --format json`: streamed events carry `part.tokens` /
+    `part.cost` per step but no model name; `opencode export <sessionID>`
+    afterward gives `info.model.{id,providerID}`, `info.cost`,
+    `info.tokens.{input,output,reasoning,cache}`.
+  - `pi -p --mode json`: NDJSON events, each `message_end`/`turn_end`/
+    `agent_end` carries `model`, `provider`, `usage.{input,output,cacheRead,
+    cacheWrite,totalTokens,cost.{...,total}}`. `pi` was not previously wired
+    into `run_loop.py` at all (`--runtime` only accepted `claude`/
+    `opencode`) — added as a third runtime this voyage, using `pi`'s own
+    `--skill` flag to load a role's skill file directly rather than folding
+    it into `--append-system-prompt`.
+  Cost was `0` (not absent) for the `elm` provider in both `pi` and
+  `opencode` — a custom/internal proxy that doesn't report spend. The schema
+  treats a genuinely-missing field as `null`, and passes through whatever
+  number the runtime itself reports otherwise, including a real `0`.
+  Scoping decision, confirmed with the user: accounting covers only role
+  dispatches that go through a bounded runtime subprocess (any of the three
+  CLIs), which today means `run_loop.py` only. Two adjacent ideas were
+  explicitly ruled out as not needed now: (1) a `SubagentStop`-hook
+  mechanism to cover roles dispatched as Claude Code subagents — PCE's
+  roles have no subagent dispatch path in this repo today (unlike
+  Shipshape's own captain/qm/crew/boatswain/shipwright, which do), so this
+  would have no live call site; (2) accounting for a role loaded inline into
+  an ambient conversation via the `Skill` tool with no subprocess boundary
+  (e.g. `/pce:editor` typed directly, or this very `/shipshape:captain`
+  session) — there is no bounded segment to sum usage over from inside that
+  pattern; named as a permanent, undispatchable gap rather than a future
+  work item. Added `schemas/accounting.schema.json` (normalized record:
+  pass_id, role, profile_id, runtime, provider, model, token counts,
+  cost_usd, duration_ms, timestamp — nullable fields where a runtime doesn't
+  report them), extended `features/run-loop.feature` (pi as a third
+  dispatched runtime; the accounting-record-writing and field-normalization
+  Scenario Outline; the `@contract` shape scenario), and registered the new
+  schema in `features/schemas.feature`. Watchbill written as watch1-4.
+
 ## Process note
 
 Auto-memory (the `~/.claude/projects/.../memory/` mechanism) must not be used for this repo: it injects into every session touching this project directory regardless of role, including fresh QM/Crew/Boatswain subagent dispatches, which is exactly the bulkhead violation Article 7 forbids. Use this file for Captain-persistent notes instead - nothing auto-injects it, and `.rgignore` already excludes it from sweeps.

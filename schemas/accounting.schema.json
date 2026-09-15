@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/artificial-org/schemas/accounting.schema.json",
+  "title": "Accounting Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pass_id", "role", "runtime", "timestamp"],
+  "properties": {
+    "pass_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role": {
+      "type": "string",
+      "enum": ["author", "archivist", "fact-checker", "critic", "specialist"]
+    },
+    "profile_id": {
+      "type": ["string", "null"]
+    },
+    "runtime": {
+      "type": "string",
+      "enum": ["claude", "opencode", "pi"]
+    },
+    "provider": {
+      "type": ["string", "null"]
+    },
+    "model": {
+      "type": ["string", "null"]
+    },
+    "input_tokens": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "output_tokens": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "cache_read_tokens": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "cache_write_tokens": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "total_tokens": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "cost_usd": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "duration_ms": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
