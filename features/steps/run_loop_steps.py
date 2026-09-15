@@ -13,6 +13,7 @@ No planks: verification support carries none, per the Planking agreement.
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import os
 import shutil
@@ -21,7 +22,7 @@ from pathlib import Path
 
 from behave import given, when, then
 
-from support import REPO_ROOT, new_tmp_dir, run
+from support import REPO_ROOT, new_tmp_dir, run, validate_json_schema
 
 IMPORT_PRELUDE = (
     "import importlib.util, json, sys\n"
@@ -49,6 +50,64 @@ def build_run_loop_fixture(context):
 def run_driver(context, code):
     full = IMPORT_PRELUDE + code
     return run([sys.executable, "-c", full], cwd=context.tmp_root)
+
+
+_MODULE_CACHE = {}
+
+
+def _run_loop_module():
+    """Load the real packaging/run_loop.py in-process, read-only.
+
+    The accounting-record seam under test has no dependency on ROOT-relative
+    resolution (SKILLS_CORE, templates), so it runs directly against the
+    committed file rather than through the isolated-ROOT subprocess driver
+    the other scenarios in this file need.
+    """
+    cached = _MODULE_CACHE.get("module")
+    if cached is not None:
+        return cached
+    path = REPO_ROOT / "packaging" / "run_loop.py"
+    spec = importlib.util.spec_from_file_location("run_loop_readonly", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _MODULE_CACHE["module"] = module
+    return module
+
+
+def _set_path(d, path, value):
+    """Set a value in a nested dict from a dotted path string."""
+    parts = path.split(".")
+    for part in parts[:-1]:
+        d = d.setdefault(part, {})
+    d[parts[-1]] = value
+
+
+def _build_canned_response(model_field, model, input_field, input_value, output_field, output_value, cost_field, cost_value):
+    """Build a nested dict mimicking a real runtime's raw JSON response shape.
+
+    A "<field> key" phrase, such as "modelUsage key", means the model name is
+    the sole key of that field's object rather than a value at a path.
+    """
+    response = {}
+    if model_field.endswith(" key"):
+        container = model_field[: -len(" key")]
+        response.setdefault(container, {})[model] = {}
+    else:
+        _set_path(response, model_field, model)
+    _set_path(response, input_field, input_value)
+    _set_path(response, output_field, output_value)
+    _set_path(response, cost_field, cost_value)
+    return response
+
+
+def _find_accounting_record(workflow_dir, pass_id, role, runtime):
+    history_dir = workflow_dir / "accounting" / "history"
+    if not history_dir.is_dir():
+        return []
+    return [
+        p for p in history_dir.glob("*")
+        if p.is_file() and pass_id in p.name and role in p.name and runtime in p.name
+    ]
 
 
 # --- Runner refuses a workflow directory with no brief -------------------
@@ -277,6 +336,96 @@ def step_no_hardcoded_task_text(context):
                     hardcoded.append(sub.value)
     assert calls_build_dispatch_task, f"{func_name} does not build its task from build_dispatch_task()"
     assert not hardcoded, f"{func_name} still hardcodes task prose: {hardcoded}"
+
+
+# --- accounting record -------------------------------------------------------
+
+@given('run_loop.py dispatches the "{role}" role in pass "{pass_id}" through the "{runtime}" runtime')
+def step_accounting_dispatch_setup(context, role, pass_id, runtime):
+    context.workflow_dir = new_tmp_dir(context, "pce-accounting-")
+    context.role = role
+    context.pass_id = pass_id
+    context.runtime = runtime
+
+
+@given(
+    'that runtime\'s response reports "{model_field}" "{model}", "{input_field}" {input_value:d}, '
+    '"{output_field}" {output_value:d}, and "{cost_field}" {cost_value:g}'
+)
+def step_accounting_response(
+    context, model_field, model, input_field, input_value, output_field, output_value, cost_field, cost_value
+):
+    response = _build_canned_response(
+        model_field, model, input_field, input_value, output_field, output_value, cost_field, cost_value
+    )
+    context.response_text = json.dumps(response)
+
+
+@when("that dispatch completes")
+def step_dispatch_completes(context):
+    run_loop = _run_loop_module()
+    run_loop.write_accounting_record(
+        context.workflow_dir, context.pass_id, context.role, context.runtime, context.response_text
+    )
+
+
+@then(
+    'the workflow directory contains an accounting record under "accounting/history/" naming pass '
+    '"{pass_id}", role "{role}", and runtime "{runtime}"'
+)
+def step_accounting_record_exists(context, pass_id, role, runtime):
+    matches = _find_accounting_record(context.workflow_dir, pass_id, role, runtime)
+    assert len(matches) == 1, (matches, list((context.workflow_dir / "accounting" / "history").glob("*")))
+    context.accounting_record = json.loads(matches[0].read_text(encoding="utf-8"))
+
+
+@then('that record\'s model is "{model}"')
+def step_record_model(context, model):
+    assert context.accounting_record.get("model") == model, context.accounting_record
+
+
+@then("that record's input_tokens is {value:d}")
+def step_record_input_tokens(context, value):
+    assert context.accounting_record.get("input_tokens") == value, context.accounting_record
+
+
+@then("that record's output_tokens is {value:d}")
+def step_record_output_tokens(context, value):
+    assert context.accounting_record.get("output_tokens") == value, context.accounting_record
+
+
+@then("that record's cost_usd is {value:g}")
+def step_record_cost_usd(context, value):
+    assert context.accounting_record.get("cost_usd") == value, context.accounting_record
+
+
+# --- accounting record schema conformance -------------------------------------
+
+@given("an accounting record written for a role dispatch")
+def step_accounting_record_written(context):
+    context.workflow_dir = new_tmp_dir(context, "pce-accounting-")
+    response = _build_canned_response(
+        "modelUsage key", "claude-sonnet-5",
+        "usage.input_tokens", 2,
+        "usage.output_tokens", 4,
+        "total_cost_usd", 0.0388,
+    )
+    run_loop = _run_loop_module()
+    run_loop.write_accounting_record(context.workflow_dir, "pass1", "author", "claude", json.dumps(response))
+    matches = _find_accounting_record(context.workflow_dir, "pass1", "author", "claude")
+    assert len(matches) == 1, matches
+    context.accounting_record = json.loads(matches[0].read_text(encoding="utf-8"))
+
+
+@when('the record is checked against the "Accounting Record" schema')
+def step_check_record_schema(context):
+    schema = json.loads((REPO_ROOT / "schemas" / "accounting.schema.json").read_text(encoding="utf-8"))
+    context.schema_errors = validate_json_schema(context.accounting_record, schema)
+
+
+@then('the response conforms to the "Accounting Record" schema in "schemas/accounting.schema.json"')
+def step_record_conforms(context):
+    assert not context.schema_errors, context.schema_errors
 
 
 # --- real bounded pass (@sandbox) ------------------------------------------

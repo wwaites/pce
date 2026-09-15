@@ -20,6 +20,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -142,16 +144,54 @@ def run_opencode(system_prompt: str, message: str, cwd: Path) -> str:
     return result.stdout
 
 
+def run_pi(role: str, skill_path: Path, message: str, cwd: Path) -> str:
+    """Run one bounded pi CLI turn, loading the role's skill file via pi's own --skill flag.
+
+    Pi only loads a --skill file that carries Agent Skills frontmatter (a
+    "name" and "description"); skills-core/<role>.md carries neither, so a
+    scratch copy adds the minimal frontmatter pi requires without touching
+    the asset, and the message invokes it by name via pi's own /skill:<name>
+    command so pi loads the skill's content deterministically rather than
+    leaving that to the model's own discretion.
+
+    @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    """
+    scratch = Path(tempfile.mkdtemp(prefix="pce-pi-skill-"))
+    try:
+        wrapped = scratch / f"{role}.md"
+        wrapped.write_text(
+            f"---\nname: {role}\ndescription: PCE {role} role skill and task contract.\n---\n\n"
+            + skill_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        cmd = [
+            "pi", "-p", f"/skill:{role} {message}",
+            "--skill", str(wrapped),
+            "--tools", "read,bash,edit,write",
+            "--no-session",
+        ]
+        result = subprocess.run(
+            cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=False
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"pi exited {result.returncode}: {result.stderr[-2000:]}")
+        return result.stdout
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
 def dispatch(runtime: str, role: str, task: str, cwd: Path) -> str:
     """Load a role's skill contract and run it as one turn of the chosen runtime.
 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
     """
-    skill = (SKILLS_CORE / f"{role}.md").read_text(encoding="utf-8")
+    skill_path = SKILLS_CORE / f"{role}.md"
     print(f"    -> dispatching {role} ({runtime}) in {cwd}", file=sys.stderr)
     if runtime == "claude":
-        return run_claude(skill, task, cwd)
-    return run_opencode(skill, task, cwd)
+        return run_claude(skill_path.read_text(encoding="utf-8"), task, cwd)
+    if runtime == "pi":
+        return run_pi(role, skill_path, task, cwd)
+    return run_opencode(skill_path.read_text(encoding="utf-8"), task, cwd)
 
 
 def schema_text(name: str) -> str:
@@ -160,6 +200,55 @@ def schema_text(name: str) -> str:
     @planks('it prints the fact-checker verdict and the critic verdict in its summary')
     """
     return (ROOT / "schemas" / name).read_text(encoding="utf-8")
+
+
+def write_accounting_record(workflow_dir: Path, pass_id: str, role: str, runtime: str, response_text: str) -> Path:
+    """Normalize a runtime's raw response and write one accounting record under accounting/history/.
+
+    @planks('the workflow directory contains an accounting record under "accounting/history/" naming pass "{pass_id}", role "{role}", and runtime "{runtime}"')
+    @planks('the response conforms to the "Accounting Record" schema in "schemas/accounting.schema.json"')
+    """
+    response = json.loads(response_text)
+    if runtime == "claude":
+        model = next(iter(response["modelUsage"]))
+        input_tokens = response["usage"]["input_tokens"]
+        output_tokens = response["usage"]["output_tokens"]
+        cost_usd = response["total_cost_usd"]
+    elif runtime == "opencode":
+        model = response["info"]["model"]["id"]
+        input_tokens = response["info"]["tokens"]["input"]
+        output_tokens = response["info"]["tokens"]["output"]
+        cost_usd = response["info"]["cost"]
+    elif runtime == "pi":
+        model = response["model"]
+        input_tokens = response["usage"]["input"]
+        output_tokens = response["usage"]["output"]
+        cost_usd = response["usage"]["cost"]["total"]
+    else:
+        raise ValueError(f"unknown runtime {runtime!r}")
+
+    record = {
+        "pass_id": pass_id,
+        "role": role,
+        "profile_id": None,
+        "runtime": runtime,
+        "provider": None,
+        "model": model,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": None,
+        "cache_write_tokens": None,
+        "total_tokens": None,
+        "cost_usd": cost_usd,
+        "duration_ms": None,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    history_dir = workflow_dir / "accounting" / "history"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    record_path = history_dir / f"{pass_id}-{role}-{runtime}-{uuid.uuid4().hex}.json"
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    return record_path
 
 
 def build_dispatch_task(role: str) -> str:
@@ -272,7 +361,7 @@ def main() -> int:
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workflow_dir", type=Path, help="Project workspace holding brief.md, sources/, etc.")
-    parser.add_argument("--runtime", choices=["claude", "opencode"], required=True)
+    parser.add_argument("--runtime", choices=["claude", "opencode", "pi"], required=True)
     args = parser.parse_args()
 
     workflow_dir = args.workflow_dir.resolve()
