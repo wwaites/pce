@@ -54,6 +54,7 @@ Procedure lives in the skills. Every role reads this on open.
 - dependency: behave
 - dependency: coverage
 - dependency: ruff
+- dependency: pi
 
 ## Outbound
 
