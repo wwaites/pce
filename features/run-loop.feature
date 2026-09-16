@@ -106,3 +106,37 @@ Feature: Bounded review-pass runner
       | archivist    |
       | fact-checker |
       | critic       |
+
+  Rule: state.json MAY pin a model for a role, and independently for each
+  critic profile, keyed by runtime name so the same pin survives a
+  "--runtime" switch — a runtime-agnostic value could not, since "claude",
+  "opencode", and "pi" each expect a different model-name format. A critic
+  profile's own pin overrides that role's top-level default under "models";
+  neither present leaves the dispatch on the chosen runtime's own default
+  model. A pin with no entry for the active runtime is treated as absent
+  for that dispatch, not an error, since a jester profile pinned only to
+  "claude" should not break a pass run with "--runtime opencode" — it
+  simply rides that runtime's default instead of losing the guarantee
+  silently.
+
+  Scenario Outline: A role dispatch pins its model when state.json names one for the active runtime
+    Given a workflow directory with state.json's "models.<role>" naming model "<model>" for runtime "<runtime>"
+    When run_loop.py dispatches the "<role>" role through the "<runtime>" runtime
+    Then the dispatched subprocess command includes "--model" followed by "<model>"
+
+    Examples:
+      | role         | runtime  | model                     |
+      | author       | claude   | opus                      |
+      | archivist    | opencode | anthropic/claude-opus-5   |
+      | fact-checker | pi       | anthropic/claude-sonnet-5 |
+
+  Scenario: A critic profile's own model pin overrides the role-level default
+    Given state.json's "models.critic" names model "sonnet" for runtime "claude"
+    And critic profile "jester" names model "opus" for runtime "claude"
+    When run_loop.py dispatches the "jester" critic profile through the "claude" runtime
+    Then the dispatched subprocess command includes "--model" followed by "opus"
+
+  Scenario: A model pin with no entry for the active runtime leaves that dispatch unpinned
+    Given critic profile "jester" names a model only for runtime "claude"
+    When run_loop.py dispatches the "jester" critic profile through the "opencode" runtime
+    Then the dispatched subprocess command does not include "--model"

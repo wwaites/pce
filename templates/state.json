@@ -4,6 +4,16 @@
   "required_gates": ["fact-checker"],
   "critic_score_policy": "advisory-only",
   "acceptance_policy": "editor judgement from concrete findings",
-  "critic_profiles": {},
+  "models": {},
+  "critic_profiles": {
+    "jester": {
+      "remit": "Argue with the draft's own assumptions on purpose. Read it as a critic who owes it no charity: name the conclusion it was written backward from, the framing nobody in the room questioned, the thing a careful and agreeable reviewer is structurally unable to say. Say the uncomfortable reading plainly. If the draft genuinely has no such blind spot, say that instead of manufacturing one.",
+      "model": {
+        "claude": "opus",
+        "opencode": "anthropic/claude-opus-5",
+        "pi": "anthropic/claude-opus-5"
+      }
+    }
+  },
   "specialist_questions": {}
 }

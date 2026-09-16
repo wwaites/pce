@@ -108,10 +108,12 @@ def collect_back(staged: Path, workflow_dir: Path, patterns: list[str]) -> list[
     return written
 
 
-def run_claude(system_prompt: str, message: str, cwd: Path) -> str:
+def run_claude(system_prompt: str, message: str, cwd: Path, model: str | None = None) -> str:
     """Run one bounded claude CLI turn with the given system prompt and task.
 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks('the dispatched subprocess command includes "--model" followed by "{model}"')
+    @planks('the dispatched subprocess command does not include "--model"')
     """
     cmd = [
         "claude", "-p", message,
@@ -121,6 +123,8 @@ def run_claude(system_prompt: str, message: str, cwd: Path) -> str:
         "--no-session-persistence",
         "--output-format", "json",
     ]
+    if model is not None:
+        cmd.extend(["--model", model])
     result = subprocess.run(
         cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=False
     )
@@ -129,13 +133,17 @@ def run_claude(system_prompt: str, message: str, cwd: Path) -> str:
     return result.stdout
 
 
-def run_opencode(system_prompt: str, message: str, cwd: Path) -> str:
+def run_opencode(system_prompt: str, message: str, cwd: Path, model: str | None = None) -> str:
     """Run one bounded opencode CLI turn with the given system prompt and task.
 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks('the dispatched subprocess command includes "--model" followed by "{model}"')
+    @planks('the dispatched subprocess command does not include "--model"')
     """
     combined = f"{system_prompt}\n\n---\n\nTask:\n\n{message}"
     cmd = ["opencode", "run", combined, "--dir", str(cwd), "--format", "json"]
+    if model is not None:
+        cmd.extend(["--model", model])
     result = subprocess.run(
         cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=False
     )
@@ -144,7 +152,7 @@ def run_opencode(system_prompt: str, message: str, cwd: Path) -> str:
     return result.stdout
 
 
-def run_pi(role: str, skill_path: Path, message: str, cwd: Path) -> str:
+def run_pi(role: str, skill_path: Path, message: str, cwd: Path, model: str | None = None) -> str:
     """Run one bounded pi CLI turn, loading the role's skill file via pi's own --skill flag.
 
     Pi only loads a --skill file that carries Agent Skills frontmatter (a
@@ -155,6 +163,8 @@ def run_pi(role: str, skill_path: Path, message: str, cwd: Path) -> str:
     leaving that to the model's own discretion.
 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks('the dispatched subprocess command includes "--model" followed by "{model}"')
+    @planks('the dispatched subprocess command does not include "--model"')
     """
     scratch = Path(tempfile.mkdtemp(prefix="pce-pi-skill-"))
     try:
@@ -170,6 +180,8 @@ def run_pi(role: str, skill_path: Path, message: str, cwd: Path) -> str:
             "--tools", "read,bash,edit,write",
             "--no-session",
         ]
+        if model is not None:
+            cmd.extend(["--model", model])
         result = subprocess.run(
             cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=False
         )
@@ -180,7 +192,7 @@ def run_pi(role: str, skill_path: Path, message: str, cwd: Path) -> str:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def dispatch(runtime: str, role: str, task: str, cwd: Path) -> str:
+def dispatch(runtime: str, role: str, task: str, cwd: Path, model: str | None = None) -> str:
     """Load a role's skill contract and run it as one turn of the chosen runtime.
 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
@@ -188,10 +200,26 @@ def dispatch(runtime: str, role: str, task: str, cwd: Path) -> str:
     skill_path = SKILLS_CORE / f"{role}.md"
     print(f"    -> dispatching {role} ({runtime}) in {cwd}", file=sys.stderr)
     if runtime == "claude":
-        return run_claude(skill_path.read_text(encoding="utf-8"), task, cwd)
+        return run_claude(skill_path.read_text(encoding="utf-8"), task, cwd, model)
     if runtime == "pi":
-        return run_pi(role, skill_path, task, cwd)
-    return run_opencode(skill_path.read_text(encoding="utf-8"), task, cwd)
+        return run_pi(role, skill_path, task, cwd, model)
+    return run_opencode(skill_path.read_text(encoding="utf-8"), task, cwd, model)
+
+
+def resolve_model(workflow_dir: Path, role: str, runtime: str, profile_id: str | None = None) -> str | None:
+    """Resolve the model pinned for a role and runtime, a critic profile's own pin taking precedence.
+
+    @planks('the dispatched subprocess command includes "--model" followed by "{model}"')
+    @planks('the dispatched subprocess command does not include "--model"')
+    """
+    state_path = workflow_dir / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+    model = state.get("models", {}).get(role, {}).get(runtime)
+    if profile_id is not None:
+        profile_model = state.get("critic_profiles", {}).get(profile_id, {}).get("model", {}).get(runtime)
+        if profile_model is not None:
+            model = profile_model
+    return model
 
 
 def schema_text(name: str) -> str:
@@ -267,7 +295,8 @@ def run_author(runtime: str, workflow_dir: Path) -> None:
     @planks("run_loop.py contains no hardcoded English sentence as that role's task text")
     """
     task = build_dispatch_task("author") + schema_text("claims.schema.json")
-    dispatch(runtime, "author", task, workflow_dir)
+    model = resolve_model(workflow_dir, "author", runtime)
+    dispatch(runtime, "author", task, workflow_dir, model)
     if not (workflow_dir / "drafts" / "current.md").is_file():
         raise RuntimeError("author did not write drafts/current.md")
     if not (workflow_dir / "claims" / "current.json").is_file():
@@ -282,7 +311,8 @@ def run_archivist(runtime: str, workflow_dir: Path) -> None:
     @planks("run_loop.py contains no hardcoded English sentence as that role's task text")
     """
     task = build_dispatch_task("archivist") + PASS_ID
-    dispatch(runtime, "archivist", task, workflow_dir)
+    model = resolve_model(workflow_dir, "archivist", runtime)
+    dispatch(runtime, "archivist", task, workflow_dir, model)
     draft_glob = to_glob(parse_scope("archivist", "## Write Scope")[0], **{"pass-id": PASS_ID})
     if not globmod.glob(draft_glob, root_dir=workflow_dir):
         raise RuntimeError(f"archivist did not write a draft snapshot matching {draft_glob}")
@@ -301,6 +331,7 @@ def run_fact_checker(runtime: str, workflow_dir: Path) -> dict:
     write_patterns = [
         substitute(p, **{"pass-id": PASS_ID}) for p in parse_scope("fact-checker", "## Write Scope")
     ]
+    model = resolve_model(workflow_dir, "fact-checker", runtime)
     staged = stage_workspace(workflow_dir, read_patterns)
     try:
         task = (
@@ -308,7 +339,7 @@ def run_fact_checker(runtime: str, workflow_dir: Path) -> dict:
             + PASS_ID
             + schema_text("fact-check.schema.json")
         )
-        dispatch(runtime, "fact-checker", task, staged)
+        dispatch(runtime, "fact-checker", task, staged, model)
         current = staged / "reviews" / "current" / "fact-check.json"
         if not current.is_file():
             raise RuntimeError("fact-checker did not write reviews/current/fact-check.json")
@@ -333,6 +364,7 @@ def run_critic(runtime: str, workflow_dir: Path, profile_id: str, remit: str) ->
         substitute(p, **{"pass-id": PASS_ID, "profile-id": profile_id})
         for p in parse_scope("critic", "## Write Scope")
     ]
+    model = resolve_model(workflow_dir, "critic", runtime, profile_id)
     staged = stage_workspace(workflow_dir, read_patterns)
     try:
         task = (
@@ -340,7 +372,7 @@ def run_critic(runtime: str, workflow_dir: Path, profile_id: str, remit: str) ->
             + f"{PASS_ID}\n{profile_id}\n{remit}\n\n"
             + (ROOT / "templates" / "reviews" / "critic.md").read_text(encoding="utf-8")
         )
-        dispatch(runtime, "critic", task, staged)
+        dispatch(runtime, "critic", task, staged, model)
         current = staged / "reviews" / "current" / f"critic-{profile_id}.md"
         if not current.is_file():
             raise RuntimeError(f"critic({profile_id}) did not write its current review")

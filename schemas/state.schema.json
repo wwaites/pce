@@ -5,7 +5,29 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["risk", "max_passes", "required_gates", "critic_score_policy", "acceptance_policy"],
+  "$defs": {
+    "modelMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "claude": {"type": "string", "minLength": 1},
+        "opencode": {"type": "string", "minLength": 1},
+        "pi": {"type": "string", "minLength": 1}
+      }
+    }
+  },
   "properties": {
+    "models": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "author": {"$ref": "#/$defs/modelMap"},
+        "archivist": {"$ref": "#/$defs/modelMap"},
+        "fact-checker": {"$ref": "#/$defs/modelMap"},
+        "critic": {"$ref": "#/$defs/modelMap"}
+      }
+    },
     "risk": {
       "type": "string",
       "enum": ["low", "medium", "high"]
@@ -40,7 +62,8 @@
           "remit": {
             "type": "string",
             "minLength": 1
-          }
+          },
+          "model": {"$ref": "#/$defs/modelMap"}
         }
       }
     },

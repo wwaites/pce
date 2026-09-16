@@ -102,6 +102,49 @@ Binding behaviour lives in `.feature` specs and referenced `assets/**`. History 
   Scenario Outline; the `@contract` shape scenario), and registered the new
   schema in `features/schemas.feature`. Watchbill written as watch1-4.
 
+- 2026-09-16: New voyage — per-role and per-critic-profile model pinning. User
+  asked whether a reviewer/editor role's model could be selected, and
+  separately flagged that a "clown" (renamed `jester`) subagent perspective —
+  documented in `~/Org/talks/how-to-think-about-agents-notes.org` (Pattern C,
+  engineered dissent) and `~/Org/projects/qsl-midterm-review.org`, not in this
+  repo — is a genuinely useful source of off-axis critique, and that model
+  choice for it is empirically load-bearing: the user's own QSL note records
+  "GPT through the EDINA key was not creative enough, Claude was." Confirmed
+  with the user: `run_loop.py` currently has no `--model` pass-through at all
+  (`--runtime` only selects the CLI: claude/opencode/pi); live-checked all
+  three CLIs' `--help` and confirmed each accepts `--model`, but in
+  incompatible formats (claude wants an alias like `sonnet`, opencode wants
+  `provider/model`, pi accepts either) — so a flat model string couldn't
+  survive a `--runtime` switch. Decided: `state.json` gets a top-level
+  `models` object (role -> runtime-keyed model map) and each `critic_profiles`
+  entry gets an optional `model` of the same shape, profile pin overriding
+  the role default overriding the runtime's own default; an absent entry for
+  the active runtime is silently unpinned, not an error. Added
+  `schemas/state.schema.json`'s `$defs.modelMap`, wired it into both
+  `models` and `critic_profiles[*].model`; added scenarios to
+  `features/run-loop.feature` (pin resolution, profile-overrides-role
+  precedence, missing-runtime-entry fallback); shipped a ready-to-use
+  `jester` critic profile in `templates/state.json` pinned to `opus` across
+  all three runtimes, plus editor.md rules 8-9 naming it and explaining when
+  to pin a model. Watchbill written as watch1-4. Deliberately left
+  `run_loop.py` itself untouched — resolving and threading the model pin
+  through `dispatch()`/`run_claude`/`run_opencode`/`run_pi` is Crew's
+  implementation, not Captain's to write.
+
+- 2026-09-16: Same voyage, custody foul — Boatswain's post-implementation
+  custody found the mandatory broad sweep red for two reasons and made no
+  commit. (1) `resolve_model`'s unconditional `state.json` read
+  (`run_loop.py:215`, called from `run_author`/`run_archivist`/
+  `run_fact_checker`/`run_critic`) crashes any workflow dir without
+  `state.json`, regressing the pre-existing "dispatched task begins with its
+  template" Outline — a Crew implementation gap, not a spec problem; added
+  `watch5` for it and left the fix to a QM/Crew redispatch, since Captain
+  does not touch production code. (2) `skills-core/editor.md`'s edit (jester
+  profile, rules 8-9) was never propagated to its three generated copies —
+  fixed directly by running `python3 packaging/sync-adapters.py` (the
+  existing generator, not a code change) and confirmed with `--check`; this
+  is asset-sync mechanics over content Captain already owns, not authorship.
+
 ## Process note
 
 Auto-memory (the `~/.claude/projects/.../memory/` mechanism) must not be used for this repo: it injects into every session touching this project directory regardless of role, including fresh QM/Crew/Boatswain subagent dispatches, which is exactly the bulkhead violation Article 7 forbids. Use this file for Captain-persistent notes instead - nothing auto-injects it, and `.rgignore` already excludes it from sweeps.

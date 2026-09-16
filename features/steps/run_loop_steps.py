@@ -290,7 +290,7 @@ def step_run_role_reaches_dispatch(context, role):
         "captured = {}\n"
         "class _Captured(Exception):\n"
         "    pass\n"
-        "def _fake_dispatch(runtime, role_arg, task, cwd):\n"
+        "def _fake_dispatch(runtime, role_arg, task, cwd, model=None):\n"
         "    # @exceptional-double: dispatch()'s real CLI subprocess call is\n"
         "    # covered for real by the @sandbox tier scenario; this fake\n"
         "    # captures the composition, the task argument passed in, only.\n"
@@ -426,6 +426,121 @@ def step_check_record_schema(context):
 @then('the response conforms to the "Accounting Record" schema in "schemas/accounting.schema.json"')
 def step_record_conforms(context):
     assert not context.schema_errors, context.schema_errors
+
+
+# --- model pinning ------------------------------------------------------------
+
+def _pending_state(context):
+    if not hasattr(context, "pending_state"):
+        context.pending_state = {}
+    return context.pending_state
+
+
+def _fake_subprocess_driver_code(call_line):
+    """Driver body that fakes subprocess.run to capture the built command line,
+    calls the given real run_loop call, and prints the captured command.
+
+    The real function under test still runs end to end up to the subprocess
+    boundary; only the external CLI process itself, which the @sandbox tier
+    covers for real, is stood in for here.
+    """
+    return (
+        "class _FakeResult:\n"
+        "    def __init__(self):\n"
+        "        self.returncode = 0\n"
+        "        self.stdout = '{}'\n"
+        "        self.stderr = ''\n"
+        "captured = {}\n"
+        "def _fake_run(cmd, **kwargs):\n"
+        "    captured['cmd'] = cmd\n"
+        "    return _FakeResult()\n"
+        "run_loop.subprocess.run = _fake_run\n"
+        "try:\n"
+        f"    {call_line}\n"
+        "except Exception:\n"
+        "    pass\n"
+        "print(json.dumps(captured.get('cmd')))\n"
+    )
+
+
+@given('a workflow directory with state.json\'s "models.{role}" naming model "{model}" for runtime "{runtime}"')
+def step_model_pin_role_setup(context, role, model, runtime):
+    state = _pending_state(context)
+    state.setdefault("models", {}).setdefault(role, {})[runtime] = model
+
+
+@given('state.json\'s "models.{role}" names model "{model}" for runtime "{runtime}"')
+def step_model_pin_named(context, role, model, runtime):
+    state = _pending_state(context)
+    state.setdefault("models", {}).setdefault(role, {})[runtime] = model
+
+
+@given('critic profile "{profile}" names model "{model}" for runtime "{runtime}"')
+def step_critic_profile_model(context, profile, model, runtime):
+    state = _pending_state(context)
+    state.setdefault("critic_profiles", {}).setdefault(profile, {"remit": "Fixture remit."})
+    state["critic_profiles"][profile].setdefault("model", {})[runtime] = model
+
+
+@given('critic profile "{profile}" names a model only for runtime "{runtime}"')
+def step_critic_profile_model_only(context, profile, runtime):
+    state = _pending_state(context)
+    state.setdefault("critic_profiles", {}).setdefault(profile, {"remit": "Fixture remit."})
+    state["critic_profiles"][profile].setdefault("model", {})[runtime] = "opus"
+
+
+@when('run_loop.py dispatches the "{role}" role through the "{runtime}" runtime')
+def step_dispatch_role_for_model(context, role, runtime):
+    context.tmp_root = build_run_loop_fixture(context)
+    (context.tmp_root / "templates" / "prompts").mkdir(parents=True, exist_ok=True)
+    (context.tmp_root / "templates" / "prompts" / f"{role}-task.md").write_text(
+        f"Fixture task for {role}.\n", encoding="utf-8"
+    )
+    (context.tmp_root / "skills-core" / f"{role}.md").write_text("# stub\n", encoding="utf-8")
+    context.workflow_dir = new_tmp_dir(context, "pce-workflow-")
+    state = _pending_state(context)
+    (context.workflow_dir / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    func_name = "run_" + role.replace("-", "_")
+    call_line = f"run_loop.{func_name}({runtime!r}, Path(r'{context.workflow_dir}'))"
+    context.result = run_driver(context, _fake_subprocess_driver_code(call_line))
+    assert context.result.returncode == 0, context.result.stdout + context.result.stderr
+    context.dispatched_cmd = json.loads(context.result.stdout.strip().splitlines()[-1])
+
+
+@when('run_loop.py dispatches the "{profile}" critic profile through the "{runtime}" runtime')
+def step_dispatch_critic_profile_for_model(context, profile, runtime):
+    context.tmp_root = build_run_loop_fixture(context)
+    (context.tmp_root / "templates" / "prompts").mkdir(parents=True, exist_ok=True)
+    (context.tmp_root / "templates" / "prompts" / "critic-task.md").write_text(
+        "Fixture task for critic.\n", encoding="utf-8"
+    )
+    (context.tmp_root / "skills-core" / "critic.md").write_text("# stub\n", encoding="utf-8")
+    context.workflow_dir = new_tmp_dir(context, "pce-workflow-")
+    state = _pending_state(context)
+    (context.workflow_dir / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    remit = state.get("critic_profiles", {}).get(profile, {}).get("remit", "Fixture remit.")
+    call_line = (
+        f"run_loop.run_critic({runtime!r}, Path(r'{context.workflow_dir}'), {profile!r}, {remit!r})"
+    )
+    context.result = run_driver(context, _fake_subprocess_driver_code(call_line))
+    assert context.result.returncode == 0, context.result.stdout + context.result.stderr
+    context.dispatched_cmd = json.loads(context.result.stdout.strip().splitlines()[-1])
+
+
+@then('the dispatched subprocess command includes "--model" followed by "{model}"')
+def step_cmd_includes_model(context, model):
+    cmd = context.dispatched_cmd
+    assert cmd is not None, "no subprocess command captured"
+    assert "--model" in cmd, cmd
+    idx = cmd.index("--model")
+    assert cmd[idx + 1] == model, cmd
+
+
+@then('the dispatched subprocess command does not include "--model"')
+def step_cmd_excludes_model(context):
+    cmd = context.dispatched_cmd
+    assert cmd is not None, "no subprocess command captured"
+    assert "--model" not in cmd, cmd
 
 
 # --- real bounded pass (@sandbox) ------------------------------------------
