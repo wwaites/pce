@@ -121,38 +121,75 @@ def step_pce_package_installed(context):
     context.pce_command = Path(result.stdout.strip()) / "bin" / "pce"
 
 
-@when("the packaged bounded-pass runner resolves its runtime resources")
-def step_resolve_packaged_resources(context):
-    context.package_root = context.pce_command.parents[1]
-    context.runtime_root = context.package_root / "share" / "artificial-org"
+@given("packaging/run_loop.py in the source tree")
+def step_source_runner(context):
+    context.runner_paths = [REPO_ROOT / "packaging" / "run_loop.py"]
 
 
-@then("every configured role has its skill and task prompt")
-def step_packaged_roles_complete(context):
+@given("run_loop.py installed under the PCE Nix package libexec directory")
+def step_packaged_runner(context):
+    result = run(
+        ["nix", "build", "path:.#default", "--no-link", "--print-out-paths"],
+        cwd=REPO_ROOT,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    context.runner_paths.append(Path(result.stdout.strip()) / "libexec" / "run_loop.py")
+
+
+@when("each bounded-pass runner resolves its runtime resources")
+def step_resolve_runner_resources(context):
+    context.runtime_roots = []
+    for index, path in enumerate(context.runner_paths):
+        spec = importlib.util.spec_from_file_location(f"run_loop_resources_{index}", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        context.runtime_roots.append(module.ROOT)
+
+
+@then('each runner finds the "author", "archivist", "fact-checker", and "critic" role skills')
+def step_each_runner_finds_skills(context):
     roles = ("author", "archivist", "fact-checker", "critic")
     missing = [
-        path
+        root / "skills-core" / f"{role}.md"
+        for root in context.runtime_roots
         for role in roles
-        for path in (
-            context.runtime_root / "skills-core" / f"{role}.md",
-            context.runtime_root / "templates" / "prompts" / f"{role}-task.md",
-        )
-        if not path.is_file()
+        if not (root / "skills-core" / f"{role}.md").is_file()
     ]
     assert not missing, missing
 
 
-@then("every schema loaded by the bounded-pass runner is available")
-def step_packaged_schemas_complete(context):
+@then('each runner finds the "author", "archivist", "fact-checker", and "critic" task prompts')
+def step_each_runner_finds_prompts(context):
+    roles = ("author", "archivist", "fact-checker", "critic")
+    missing = [
+        root / "templates" / "prompts" / f"{role}-task.md"
+        for root in context.runtime_roots
+        for role in roles
+        if not (root / "templates" / "prompts" / f"{role}-task.md").is_file()
+    ]
+    assert not missing, missing
+
+
+@then('each runner finds the "claims.schema.json", "fact-check.schema.json", and "accounting.schema.json" schemas')
+def step_each_runner_finds_schemas(context):
     schemas = ("claims.schema.json", "fact-check.schema.json", "accounting.schema.json")
-    missing = [context.runtime_root / "schemas" / name for name in schemas]
-    assert all(path.is_file() for path in missing), missing
+    missing = [
+        root / "schemas" / name
+        for root in context.runtime_roots
+        for name in schemas
+        if not (root / "schemas" / name).is_file()
+    ]
+    assert not missing, missing
 
 
-@then("the critic review instructions are available")
-def step_packaged_critic_review(context):
-    path = context.runtime_root / "templates" / "reviews" / "critic.md"
-    assert path.is_file(), path
+@then("each runner finds the critic review instructions")
+def step_each_runner_finds_critic_review(context):
+    missing = [
+        root / "templates" / "reviews" / "critic.md"
+        for root in context.runtime_roots
+        if not (root / "templates" / "reviews" / "critic.md").is_file()
+    ]
+    assert not missing, missing
 
 
 @given('a workflow directory with no "brief.md" file')

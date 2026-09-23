@@ -12,12 +12,14 @@ Feature: Bounded review-pass runner
     Then it exits with status 2
     And it reports that "brief.md" was not found
 
-  Scenario: The packaged pce command has every resource needed for a bounded pass
-    Given the PCE Nix package is installed
-    When the packaged bounded-pass runner resolves its runtime resources
-    Then every configured role has its skill and task prompt
-    And every schema loaded by the bounded-pass runner is available
-    And the critic review instructions are available
+  Scenario: Source and packaged runners resolve the same bounded-pass resources
+    Given packaging/run_loop.py in the source tree
+    And run_loop.py installed under the PCE Nix package libexec directory
+    When each bounded-pass runner resolves its runtime resources
+    Then each runner finds the "author", "archivist", "fact-checker", and "critic" role skills
+    And each runner finds the "author", "archivist", "fact-checker", and "critic" task prompts
+    And each runner finds the "claims.schema.json", "fact-check.schema.json", and "accounting.schema.json" schemas
+    And each runner finds the critic review instructions
 
   Scenario: The default flake app runs the packaged pce command
     When the default flake app runs with "--help"

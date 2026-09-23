@@ -24,7 +24,10 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+# @planks("When each bounded-pass runner resolves its runtime resources")
 ROOT = Path(__file__).resolve().parents[1]
+if ROOT.name != "pce":
+    ROOT = ROOT / "share" / "artificial-org"
 SKILLS_CORE = ROOT / "skills-core"
 PASS_ID = "pass1"
 TIMEOUT_SECONDS = 600
