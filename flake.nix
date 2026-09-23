@@ -27,6 +27,8 @@
           default = pkgs.stdenvNoCC.mkDerivation {
             pname = "artificial-org-skills";
             version = "0.1.0";
+            # @planks("When the default flake app runs with \"--help\"")
+            meta.mainProgram = "pce";
             src = ./.;
             nativeBuildInputs = [ pkgs.python3 ];
             doCheck = true;

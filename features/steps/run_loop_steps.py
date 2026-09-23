@@ -135,6 +135,11 @@ def step_run_packaged_command(context, runtime):
     )
 
 
+@when('the default flake app runs with "--help"')
+def step_run_default_flake_app(context):
+    context.result = run(["nix", "run", "path:.", "--", "--help"], cwd=REPO_ROOT)
+
+
 @when('run_loop.py runs against that directory with "--runtime {runtime}"')
 def step_run_main(context, runtime):
     context.result = run(
@@ -158,6 +163,12 @@ def step_exit_status(context, code):
 def step_reports_not_found(context, filename):
     output = context.result.stdout + context.result.stderr
     assert filename in output and "not found" in output, output
+
+
+@then("it reports the bounded review-pass runner help")
+def step_reports_runner_help(context):
+    output = context.result.stdout + context.result.stderr
+    assert "Run one bounded artificial-organisation review pass" in output, output
 
 
 # --- read-scope parsing ----------------------------------------------------

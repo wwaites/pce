@@ -12,6 +12,11 @@ Feature: Bounded review-pass runner
     Then it exits with status 2
     And it reports that "brief.md" was not found
 
+  Scenario: The default flake app runs the packaged pce command
+    When the default flake app runs with "--help"
+    Then it exits with status 0
+    And it reports the bounded review-pass runner help
+
   Rule: run_loop.py dispatches each artificial-organisation role as a real
   subprocess of the chosen agent runtime, staging a scratch workspace for
   reviewer roles so a reviewer's file tools cannot reach material outside
