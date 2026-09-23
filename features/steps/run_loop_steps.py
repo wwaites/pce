@@ -112,9 +112,27 @@ def _find_accounting_record(workflow_dir, pass_id, role, runtime):
 
 # --- Runner refuses a workflow directory with no brief -------------------
 
+@given("the PCE Nix package is installed")
+def step_pce_package_installed(context):
+    result = run(
+        ["nix", "build", "path:.#default", "--no-link", "--print-out-paths"],
+        cwd=REPO_ROOT,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    context.pce_command = Path(result.stdout.strip()) / "bin" / "pce"
+
+
 @given('a workflow directory with no "brief.md" file')
 def step_workflow_no_brief(context):
     context.workflow_dir = new_tmp_dir(context, "pce-workflow-")
+
+
+@when('the "pce" command runs against that directory with "--runtime {runtime}"')
+def step_run_packaged_command(context, runtime):
+    context.result = run(
+        [str(context.pce_command), str(context.workflow_dir), "--runtime", runtime],
+        cwd=REPO_ROOT,
+    )
 
 
 @when('run_loop.py runs against that directory with "--runtime {runtime}"')

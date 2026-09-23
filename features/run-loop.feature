@@ -1,5 +1,17 @@
 Feature: Bounded review-pass runner
 
+  Rule: The Nix package installs a stable "pce" executable so downstream
+  projects can run a bounded pass without importing PCE source paths. The
+  command accepts the same workflow directory and "--runtime" argument as
+  run_loop.py.
+
+  Scenario: The packaged pce command runs the bounded-pass runner
+    Given the PCE Nix package is installed
+    And a workflow directory with no "brief.md" file
+    When the "pce" command runs against that directory with "--runtime claude"
+    Then it exits with status 2
+    And it reports that "brief.md" was not found
+
   Rule: run_loop.py dispatches each artificial-organisation role as a real
   subprocess of the chosen agent runtime, staging a scratch workspace for
   reviewer roles so a reviewer's file tools cannot reach material outside

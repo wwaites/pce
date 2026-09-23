@@ -11,6 +11,15 @@ Binding behaviour lives in `.feature` specs and referenced `assets/**`. History 
 
 ## Named decisions
 
+- 2026-09-23: Pathfinder integration is blocked because PCE ships
+  `packaging/run_loop.py` but no installed `pce` executable. Add a stable
+  packaged CLI that invokes the bounded-pass runner, preserving its workflow
+  directory argument and `--runtime` contract. The Nix package MUST install
+  the executable so downstream projects can depend on PCE without importing
+  sibling source paths. Pathfinder will use this executable and verify PCE's
+  own workflow artifacts and accounting records rather than reproduce role
+  prompts or editorial orchestration locally.
+
 - 2026-09-14: New voyage — install pce through the same plugin-marketplace
   route shipshape ships through (`.claude-plugin/marketplace.json` +
   `.claude-plugin/plugin.json` + `.plugin/plugin.json` duplicate, skills
