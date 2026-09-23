@@ -20,8 +20,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from behave import given, when, then
-
+from behave import given, then, when
 from support import REPO_ROOT, new_tmp_dir, run, validate_json_schema
 
 IMPORT_PRELUDE = (
@@ -120,6 +119,40 @@ def step_pce_package_installed(context):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     context.pce_command = Path(result.stdout.strip()) / "bin" / "pce"
+
+
+@when("the packaged bounded-pass runner resolves its runtime resources")
+def step_resolve_packaged_resources(context):
+    context.package_root = context.pce_command.parents[1]
+    context.runtime_root = context.package_root / "share" / "artificial-org"
+
+
+@then("every configured role has its skill and task prompt")
+def step_packaged_roles_complete(context):
+    roles = ("author", "archivist", "fact-checker", "critic")
+    missing = [
+        path
+        for role in roles
+        for path in (
+            context.runtime_root / "skills-core" / f"{role}.md",
+            context.runtime_root / "templates" / "prompts" / f"{role}-task.md",
+        )
+        if not path.is_file()
+    ]
+    assert not missing, missing
+
+
+@then("every schema loaded by the bounded-pass runner is available")
+def step_packaged_schemas_complete(context):
+    schemas = ("claims.schema.json", "fact-check.schema.json", "accounting.schema.json")
+    missing = [context.runtime_root / "schemas" / name for name in schemas]
+    assert all(path.is_file() for path in missing), missing
+
+
+@then("the critic review instructions are available")
+def step_packaged_critic_review(context):
+    path = context.runtime_root / "templates" / "reviews" / "critic.md"
+    assert path.is_file(), path
 
 
 @given('a workflow directory with no "brief.md" file')

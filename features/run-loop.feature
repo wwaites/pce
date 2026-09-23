@@ -12,6 +12,13 @@ Feature: Bounded review-pass runner
     Then it exits with status 2
     And it reports that "brief.md" was not found
 
+  Scenario: The packaged pce command has every resource needed for a bounded pass
+    Given the PCE Nix package is installed
+    When the packaged bounded-pass runner resolves its runtime resources
+    Then every configured role has its skill and task prompt
+    And every schema loaded by the bounded-pass runner is available
+    And the critic review instructions are available
+
   Scenario: The default flake app runs the packaged pce command
     When the default flake app runs with "--help"
     Then it exits with status 0
