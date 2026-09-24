@@ -97,6 +97,36 @@ Feature: Bounded review-pass runner
     Then the failure names the role, runtime, and exit status
     And the failure includes the captured stdout and structured events
 
+  Rule: OpenCode session exports used for bounded-pass accounting have a
+  configurable capture ceiling. The default ceiling is 1048576 bytes. PCE
+  preserves the captured export as raw evidence whether accounting succeeds
+  or the export exceeds that ceiling.
+
+  Scenario: A complete OpenCode export above 64 KiB is captured and parsed
+    Given a successful OpenCode role dispatch whose session export is 70000 bytes of valid JSON
+    When run_loop.py captures the session export with the default export capture ceiling
+    Then it parses the complete session export for accounting
+    And it preserves the complete session export as raw evidence
+
+  Scenario: The packaged command accepts a higher OpenCode export capture ceiling
+    Given the PCE Nix package is installed
+    And a successful OpenCode role dispatch whose session export is 1100000 bytes of valid JSON
+    When the "pce" command captures the session export with "--export-capture-limit 2097152"
+    Then it parses the complete session export for accounting
+    And it preserves the complete session export as raw evidence
+
+  Scenario: An OpenCode export above the configured ceiling fails before JSON parsing
+    Given a successful OpenCode role dispatch whose session export exceeds a 70000 byte export capture ceiling
+    When run_loop.py captures the session export with "--export-capture-limit 70000"
+    Then it exits with status 2 before parsing the partial session export
+    And the failure reports the configured ceiling as 70000 bytes
+    And the failure reports the observed export size when it is known
+    And it preserves the captured session export as raw evidence
+
+  Scenario: The default OpenCode export capture ceiling is explicit in command help
+    When the default flake app runs with "--help"
+    Then it reports "--export-capture-limit" with a default of 1048576 bytes
+
   Rule: Every role dispatch also writes one accounting record, since the
   chosen runtime already reports its own token counts and cost in the same
   response run_loop.py currently discards after pulling out the role's

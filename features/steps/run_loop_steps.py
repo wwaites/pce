@@ -439,6 +439,97 @@ def step_no_hardcoded_task_text(context):
 
 # --- accounting record -------------------------------------------------------
 
+@given("a successful OpenCode role dispatch whose session export is {size:d} bytes of valid JSON")
+def step_opencode_export_size(context, size):
+    context.export_size = size
+    context.export_limit = None
+
+
+@given("a successful OpenCode role dispatch whose session export exceeds a {limit:d} byte export capture ceiling")
+def step_opencode_export_exceeds_limit(context, limit):
+    context.export_size = limit + 1
+    context.export_limit = limit
+
+
+def _run_export_capture(context, limit):
+    context.tmp_root = build_run_loop_fixture(context)
+    (context.tmp_root / "skills-core" / "author.md").write_text("# Author fixture\n", encoding="utf-8")
+    context.evidence_path = context.tmp_root / "session-export.json"
+    payload = json.dumps({"info": {"model": {"id": "fixture-model"}}})
+    payload = payload[:-1] + ',"padding":"' + "x" * (context.export_size - len(payload) - 13) + '"}'
+    payload_path = context.tmp_root / "export-fixture.json"
+    payload_path.write_text(payload, encoding="utf-8")
+    code = (
+        "class _Result:\n"
+        "    returncode = 0\n"
+        "    stderr = ''\n"
+        "calls = 0\n"
+        "def _run(cmd, **kwargs):\n"
+        "    global calls\n"
+        "    calls += 1\n"
+        "    result = _Result()\n"
+        "    result.stdout = " + repr('{"sessionID":"fixture","part":{"tokens":{"input":1,"output":1},"cost":0}}') + f" if calls == 1 else Path(r'{payload_path}').read_text(encoding='utf-8')\n"
+        "    return result\n"
+        "run_loop.subprocess.run = _run\n"
+        "try:\n"
+        f"    run_loop.run_opencode('# fixture', 'task', Path('.'), export_capture_limit={limit}, export_evidence_path=Path(r'{context.evidence_path}'))\n"
+        "except Exception:\n"
+        "    import traceback\n"
+        "    traceback.print_exc()\n"
+        "    raise\n"
+    )
+    context.result = run_driver(context, code)
+
+
+@when("run_loop.py captures the session export with the default export capture ceiling")
+def step_capture_default_limit(context):
+    _run_export_capture(context, None)
+
+
+@when('run_loop.py captures the session export with "--export-capture-limit {limit:d}"')
+def step_capture_explicit_limit(context, limit):
+    _run_export_capture(context, limit)
+
+
+@when('the "pce" command captures the session export with "--export-capture-limit {limit:d}"')
+def step_packaged_capture_explicit_limit(context, limit):
+    _run_export_capture(context, limit)
+
+
+@then("it parses the complete session export for accounting")
+def step_complete_export_parsed(context):
+    assert context.result.returncode == 0, context.result.stdout + context.result.stderr
+
+
+@then("it preserves the complete session export as raw evidence")
+@then("it preserves the captured session export as raw evidence")
+def step_export_evidence_preserved(context):
+    assert context.evidence_path.is_file(), context.result.stdout + context.result.stderr
+    assert context.evidence_path.stat().st_size == context.export_size
+
+
+@then("it exits with status 2 before parsing the partial session export")
+def step_partial_export_rejected(context):
+    assert context.result.returncode == 2, context.result.stdout + context.result.stderr
+    assert "JSONDecodeError" not in context.result.stderr, context.result.stderr
+
+
+@then("the failure reports the configured ceiling as {limit:d} bytes")
+def step_failure_reports_ceiling(context, limit):
+    assert str(limit) in context.result.stderr, context.result.stderr
+
+
+@then("the failure reports the observed export size when it is known")
+def step_failure_reports_observed_size(context):
+    assert str(context.export_size) in context.result.stderr, context.result.stderr
+
+
+@then('it reports "--export-capture-limit" with a default of {limit:d} bytes')
+def step_help_reports_export_capture_limit(context, limit):
+    output = context.result.stdout + context.result.stderr
+    assert f"--export-capture-limit" in output, output
+    assert f"(default: {limit})" in " ".join(output.split()), output
+
 @given('run_loop.py dispatches the "{role}" role in pass "{pass_id}" through the "{runtime}" runtime')
 def step_accounting_dispatch_setup(context, role, pass_id, runtime):
     context.workflow_dir = new_tmp_dir(context, "pce-accounting-")

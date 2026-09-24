@@ -32,6 +32,7 @@ if ROOT.name != "pce":
 SKILLS_CORE = ROOT / "skills-core"
 PASS_ID = "pass1"
 TIMEOUT_SECONDS = 600
+DEFAULT_EXPORT_CAPTURE_LIMIT = 1048576
 
 
 def parse_scope(role: str, heading: str) -> list[str]:
@@ -137,7 +138,14 @@ def run_claude(system_prompt: str, message: str, cwd: Path, model: str | None = 
     return result.stdout
 
 
-def run_opencode(system_prompt: str, message: str, cwd: Path, model: str | None = None) -> str:
+def run_opencode(
+    system_prompt: str,
+    message: str,
+    cwd: Path,
+    model: str | None = None,
+    export_capture_limit: int | None = None,
+    export_evidence_path: Path | None = None,
+) -> str:
     """Run one bounded opencode CLI turn with the given system prompt and task.
 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
@@ -145,6 +153,8 @@ def run_opencode(system_prompt: str, message: str, cwd: Path, model: str | None 
     @planks('the dispatched subprocess command includes "--model" followed by "{model}"')
     @planks('the dispatched subprocess command does not include "--model"')
     @planks('the failure includes the captured stdout and structured events')
+    @planks("When run_loop.py captures the session export with the default export capture ceiling")
+    @planks('When run_loop.py captures the session export with "--export-capture-limit {limit:d}"')
     """
     combined = f"{system_prompt}\n\n---\n\nTask:\n\n{message}"
     cmd = ["opencode", "run", combined, "--dir", str(cwd), "--format", "json"]
@@ -168,6 +178,13 @@ def run_opencode(system_prompt: str, message: str, cwd: Path, model: str | None 
     )
     if exported.returncode != 0:
         raise RuntimeError(f"opencode export exited {exported.returncode}: {(exported.stderr or exported.stdout)[-2000:]}")
+    if export_evidence_path is not None:
+        export_evidence_path.write_text(exported.stdout, encoding="utf-8")
+    limit = DEFAULT_EXPORT_CAPTURE_LIMIT if export_capture_limit is None else export_capture_limit
+    export_size = len(exported.stdout.encode("utf-8"))
+    if export_size > limit:
+        print(f"OpenCode export size {export_size} bytes exceeds capture ceiling {limit} bytes", file=sys.stderr)
+        raise SystemExit(2)
     session = json.loads(exported.stdout)
     response["info"] = {
         "model": {"id": session["info"]["model"]["id"]},
@@ -437,10 +454,17 @@ def main() -> int:
     @planks('it exits 0 only when every verdict is "pass" or "approve"')
     @planks('it emits one JSON completion summary with completion_state "{state}"')
     @planks('the summary lists the ordered gate verdicts "{fact_verdict}" and "{critic_verdict}"')
+    @planks('it reports "--export-capture-limit" with a default of {limit:d} bytes')
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workflow_dir", type=Path, help="Project workspace holding brief.md, sources/, etc.")
     parser.add_argument("--runtime", choices=["claude", "opencode", "pi"], required=True)
+    parser.add_argument(
+        "--export-capture-limit",
+        type=int,
+        default=DEFAULT_EXPORT_CAPTURE_LIMIT,
+        help="OpenCode export capture ceiling in bytes (default: %(default)s)",
+    )
     args = parser.parse_args()
 
     workflow_dir = args.workflow_dir.resolve()
