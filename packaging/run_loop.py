@@ -153,8 +153,8 @@ def run_opencode(
     @planks('the dispatched subprocess command includes "--model" followed by "{model}"')
     @planks('the dispatched subprocess command does not include "--model"')
     @planks('the failure includes the captured stdout and structured events')
-    @planks("When run_loop.py captures the session export with the default export capture ceiling")
-    @planks('When run_loop.py captures the session export with "--export-capture-limit {limit:d}"')
+    @planks('it preserves the complete NDJSON run events as raw evidence')
+    @planks('it does not call "opencode export"')
     """
     combined = f"{system_prompt}\n\n---\n\nTask:\n\n{message}"
     cmd = ["opencode", "run", combined, "--dir", str(cwd), "--format", "json"]
@@ -165,33 +165,9 @@ def run_opencode(
     )
     if result.returncode != 0:
         raise RuntimeError(f"opencode exited {result.returncode}: {(result.stderr or result.stdout)[-2000:]}")
-    events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
-    response = next(event for event in reversed(events) if "part" in event)
-    session_id = response["sessionID"]
-    exported = subprocess.run(
-        ["opencode", "export", session_id],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        timeout=TIMEOUT_SECONDS,
-        check=False,
-    )
-    if exported.returncode != 0:
-        raise RuntimeError(f"opencode export exited {exported.returncode}: {(exported.stderr or exported.stdout)[-2000:]}")
     if export_evidence_path is not None:
-        export_evidence_path.write_text(exported.stdout, encoding="utf-8")
-    limit = DEFAULT_EXPORT_CAPTURE_LIMIT if export_capture_limit is None else export_capture_limit
-    export_size = len(exported.stdout.encode("utf-8"))
-    if export_size > limit:
-        print(f"OpenCode export size {export_size} bytes exceeds capture ceiling {limit} bytes", file=sys.stderr)
-        raise SystemExit(2)
-    session = json.loads(exported.stdout)
-    response["info"] = {
-        "model": {"id": session["info"]["model"]["id"]},
-        "tokens": response["part"]["tokens"],
-        "cost": response["part"]["cost"],
-    }
-    return "\n".join([*(json.dumps(event) for event in events[:-1]), json.dumps(response)])
+        export_evidence_path.write_text(result.stdout, encoding="utf-8")
+    return result.stdout
 
 
 def run_pi(role: str, skill_path: Path, message: str, cwd: Path, model: str | None = None) -> str:
@@ -205,6 +181,8 @@ def run_pi(role: str, skill_path: Path, message: str, cwd: Path, model: str | No
     leaving that to the model's own discretion.
 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks('the packaged pass dispatches "author", "archivist", "fact-checker", and "critic" through the selected runtime in order')
+    @planks("the workflow directory contains one normalized accounting record for each successful role dispatch in that order")
     @planks('the dispatched subprocess command includes "--model" followed by "{model}"')
     @planks('the dispatched subprocess command does not include "--model"')
     """
@@ -221,6 +199,7 @@ def run_pi(role: str, skill_path: Path, message: str, cwd: Path, model: str | No
             "--skill", str(wrapped),
             "--tools", "read,bash,edit,write",
             "--no-session",
+            "--mode", "json",
         ]
         if model is not None:
             cmd.extend(["--model", model])
@@ -284,10 +263,15 @@ def write_accounting_record(
 
     @planks('the workflow directory contains an accounting record under "accounting/history/" naming pass "{pass_id}", role "{role}", and runtime "{runtime}"')
     @planks('the response conforms to the "Accounting Record" schema in "schemas/accounting.schema.json"')
+    @planks("it derives the normalized token counts and cost from all reported run events")
+    @planks("the accounting record's {field} is null")
+    @planks("the workflow directory contains one normalized accounting record for each successful role dispatch in that order")
     """
     if runtime == "opencode":
         events = [json.loads(line) for line in response_text.splitlines() if line.strip()]
-        response = next(event for event in reversed(events) if "info" in event)
+    elif runtime == "pi":
+        events = [json.loads(line) for line in response_text.splitlines() if line.strip()]
+        response = next(event for event in reversed(events) if "usage" in event)
     else:
         response = json.loads(response_text)
     if runtime == "claude":
@@ -296,12 +280,14 @@ def write_accounting_record(
         output_tokens = response["usage"]["output_tokens"]
         cost_usd = response["total_cost_usd"]
     elif runtime == "opencode":
-        model = response["info"]["model"]["id"]
-        input_tokens = response["info"]["tokens"]["input"]
-        output_tokens = response["info"]["tokens"]["output"]
-        cost_usd = response["info"]["cost"]
+        parts = [event["part"] for event in events if "part" in event]
+        provider = next((part.get("provider") for part in parts if part.get("provider") is not None), None)
+        model = next((part.get("model") for part in parts if part.get("model") is not None), None)
+        input_tokens = sum(part.get("tokens", {}).get("input", 0) for part in parts)
+        output_tokens = sum(part.get("tokens", {}).get("output", 0) for part in parts)
+        cost_usd = sum(part.get("cost", 0) for part in parts)
     elif runtime == "pi":
-        model = response["model"]
+        model = next((event["model"] for event in events if "model" in event), None)
         input_tokens = response["usage"]["input"]
         output_tokens = response["usage"]["output"]
         cost_usd = response["usage"]["cost"]["total"]
@@ -313,7 +299,7 @@ def write_accounting_record(
         "role": role,
         "profile_id": profile_id,
         "runtime": runtime,
-        "provider": None,
+        "provider": provider if runtime == "opencode" else None,
         "model": model,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
@@ -454,7 +440,6 @@ def main() -> int:
     @planks('it exits 0 only when every verdict is "pass" or "approve"')
     @planks('it emits one JSON completion summary with completion_state "{state}"')
     @planks('the summary lists the ordered gate verdicts "{fact_verdict}" and "{critic_verdict}"')
-    @planks('it reports "--export-capture-limit" with a default of {limit:d} bytes')
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workflow_dir", type=Path, help="Project workspace holding brief.md, sources/, etc.")

@@ -80,15 +80,20 @@ Feature: Bounded review-pass runner
       | pi       |
 
   @sandbox
-  Scenario: Packaged pce records every successful OpenCode role dispatch
+  Scenario Outline: Packaged pce preserves bounded-pass artifacts on selectable runtimes
     Given the PCE Nix package is installed
     And a workflow directory with "brief.md", "state.json" naming the "fact-checker" and "critic" gates, and an approved source pack
-    When the "pce" command runs against that directory with "--runtime opencode"
-    Then the packaged pass dispatches "author", "archivist", "fact-checker", and "critic" through the real OpenCode runtime in order
+    When the "pce" command runs against that directory with "--runtime <runtime>"
+    Then the packaged pass dispatches "author", "archivist", "fact-checker", and "critic" through the selected runtime in order
     And the workflow directory contains one normalized accounting record for each successful role dispatch in that order
     And the critic accounting record names profile "reviewer"
     And the packaged pass reports the fact-checker and critic verdicts
     And the packaged pass exits 0 only when every verdict is "pass" or "approve"
+
+    Examples:
+      | runtime  |
+      | opencode |
+      | pi       |
 
   Scenario: A failed runtime dispatch reports its captured evidence
     Given a role dispatch whose runtime exits non-zero with empty stderr
@@ -97,35 +102,25 @@ Feature: Bounded review-pass runner
     Then the failure names the role, runtime, and exit status
     And the failure includes the captured stdout and structured events
 
-  Rule: OpenCode session exports used for bounded-pass accounting have a
-  configurable capture ceiling. The default ceiling is 1048576 bytes. PCE
-  preserves the captured export as raw evidence whether accounting succeeds
-  or the export exceeds that ceiling.
+  Rule: OpenCode accounting is derived from the complete NDJSON event stream
+  emitted by "opencode run --format json". Each dispatch preserves that raw
+  event stream as audit evidence. Accounting does not depend on a monolithic
+  session export.
 
-  Scenario: A complete OpenCode export above 64 KiB is captured and parsed
-    Given a successful OpenCode role dispatch whose session export is 70000 bytes of valid JSON
-    When run_loop.py captures the session export with the default export capture ceiling
-    Then it parses the complete session export for accounting
-    And it preserves the complete session export as raw evidence
+  Scenario: OpenCode accounting is normalized from complete run events
+    Given a successful OpenCode role dispatch whose NDJSON run events report token usage and cost across multiple events
+    When run_loop.py records accounting for that dispatch
+    Then it derives the normalized token counts and cost from all reported run events
+    And it preserves the complete NDJSON run events as raw evidence
+    And it does not call "opencode export"
 
-  Scenario: The packaged command accepts a higher OpenCode export capture ceiling
-    Given the PCE Nix package is installed
-    And a successful OpenCode role dispatch whose session export is 1100000 bytes of valid JSON
-    When the "pce" command captures the session export with "--export-capture-limit 2097152"
-    Then it parses the complete session export for accounting
-    And it preserves the complete session export as raw evidence
-
-  Scenario: An OpenCode export above the configured ceiling fails before JSON parsing
-    Given a successful OpenCode role dispatch whose session export exceeds a 70000 byte export capture ceiling
-    When run_loop.py captures the session export with "--export-capture-limit 70000"
-    Then it exits with status 2 before parsing the partial session export
-    And the failure reports the configured ceiling as 70000 bytes
-    And the failure reports the observed export size when it is known
-    And it preserves the captured session export as raw evidence
-
-  Scenario: The default OpenCode export capture ceiling is explicit in command help
-    When the default flake app runs with "--help"
-    Then it reports "--export-capture-limit" with a default of 1048576 bytes
+  Scenario: OpenCode fields absent from run events remain unknown
+    Given a successful OpenCode role dispatch whose NDJSON run events report no provider, model, or duration
+    When run_loop.py records accounting for that dispatch
+    Then the accounting record's provider is null
+    And the accounting record's model is null
+    And the accounting record's duration_ms is null
+    And it preserves the complete NDJSON run events as raw evidence
 
   Rule: Every role dispatch also writes one accounting record, since the
   chosen runtime already reports its own token counts and cost in the same
@@ -133,10 +128,7 @@ Feature: Bounded review-pass runner
   output file. Only the dispatcher ever sees a runtime's raw response, so
   writing the record can never be a dispatched role's own duty; run_loop.py
   writes it. A field the chosen runtime does not report in a given response
-  is recorded as null, never estimated. The "opencode" runtime's streamed
-  run events carry token and cost figures but not the model name, so its
-  dispatch also calls "opencode export <sessionID>" after the run completes
-  to recover the model from the exported session record.
+  is recorded as null, never estimated.
 
   Scenario Outline: A role dispatch writes an accounting record normalized from the runtime's own response
     Given run_loop.py dispatches the "<role>" role in pass "pass1" through the "<runtime>" runtime
@@ -151,7 +143,6 @@ Feature: Bounded review-pass runner
     Examples:
       | role         | runtime  | model_field     | model                      | input_field         | input | output_field         | output | cost_field        | cost   |
       | author       | claude   | modelUsage key  | claude-sonnet-5            | usage.input_tokens  | 2     | usage.output_tokens  | 4      | total_cost_usd    | 0.0388 |
-      | archivist    | opencode | info.model.id   | Qwen/Qwen3.5-397B-A17B-FP8 | info.tokens.input   | 8945  | info.tokens.output   | 39     | info.cost         | 0      |
       | fact-checker | pi       | model           | Qwen/Qwen3.5-397B-A17B-FP8 | usage.input          | 1094  | usage.output         | 46     | usage.cost.total  | 0      |
       | critic       | claude   | modelUsage key  | claude-sonnet-5            | usage.input_tokens  | 2     | usage.output_tokens  | 4      | total_cost_usd    | 0.0388 |
 

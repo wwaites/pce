@@ -15,7 +15,6 @@ from __future__ import annotations
 import ast
 import importlib.util
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -199,6 +198,7 @@ def step_workflow_no_brief(context):
 
 @when('the "pce" command runs against that directory with "--runtime {runtime}"')
 def step_run_packaged_command(context, runtime):
+    context.runtime = runtime
     context.result = run(
         [str(context.pce_command), str(context.workflow_dir), "--runtime", runtime],
         cwd=REPO_ROOT,
@@ -439,96 +439,80 @@ def step_no_hardcoded_task_text(context):
 
 # --- accounting record -------------------------------------------------------
 
-@given("a successful OpenCode role dispatch whose session export is {size:d} bytes of valid JSON")
-def step_opencode_export_size(context, size):
-    context.export_size = size
-    context.export_limit = None
+@given("a successful OpenCode role dispatch whose NDJSON run events report token usage and cost across multiple events")
+def step_opencode_multiple_accounting_events(context):
+    context.opencode_events = [
+        {"sessionID": "fixture", "part": {"tokens": {"input": 2, "output": 3}, "cost": 0.01}},
+        {"sessionID": "fixture", "part": {"tokens": {"input": 5, "output": 7}, "cost": 0.04}},
+    ]
 
 
-@given("a successful OpenCode role dispatch whose session export exceeds a {limit:d} byte export capture ceiling")
-def step_opencode_export_exceeds_limit(context, limit):
-    context.export_size = limit + 1
-    context.export_limit = limit
+@given("a successful OpenCode role dispatch whose NDJSON run events report no provider, model, or duration")
+def step_opencode_events_without_optional_fields(context):
+    context.opencode_events = [
+        {"sessionID": "fixture", "part": {"tokens": {"input": 2, "output": 3}, "cost": 0.01}},
+    ]
 
 
-def _run_export_capture(context, limit):
-    context.tmp_root = build_run_loop_fixture(context)
-    (context.tmp_root / "skills-core" / "author.md").write_text("# Author fixture\n", encoding="utf-8")
-    context.evidence_path = context.tmp_root / "session-export.json"
-    payload = json.dumps({"info": {"model": {"id": "fixture-model"}}})
-    payload = payload[:-1] + ',"padding":"' + "x" * (context.export_size - len(payload) - 13) + '"}'
-    payload_path = context.tmp_root / "export-fixture.json"
-    payload_path.write_text(payload, encoding="utf-8")
-    code = (
-        "class _Result:\n"
-        "    returncode = 0\n"
-        "    stderr = ''\n"
-        "calls = 0\n"
-        "def _run(cmd, **kwargs):\n"
-        "    global calls\n"
-        "    calls += 1\n"
-        "    result = _Result()\n"
-        "    result.stdout = " + repr('{"sessionID":"fixture","part":{"tokens":{"input":1,"output":1},"cost":0}}') + f" if calls == 1 else Path(r'{payload_path}').read_text(encoding='utf-8')\n"
-        "    return result\n"
-        "run_loop.subprocess.run = _run\n"
-        "try:\n"
-        f"    run_loop.run_opencode('# fixture', 'task', Path('.'), export_capture_limit={limit}, export_evidence_path=Path(r'{context.evidence_path}'))\n"
-        "except Exception:\n"
-        "    import traceback\n"
-        "    traceback.print_exc()\n"
-        "    raise\n"
+@when("run_loop.py records accounting for that dispatch")
+def step_record_opencode_event_accounting(context):
+    run_loop = _run_loop_module()
+    context.workflow_dir = new_tmp_dir(context, "pce-accounting-")
+    context.evidence_path = context.workflow_dir / "opencode-events.ndjson"
+    context.runtime_commands = []
+
+    class Result:
+        returncode = 0
+        stderr = ""
+        stdout = "\n".join(json.dumps(event) for event in context.opencode_events)
+
+    original_run = run_loop.subprocess.run
+
+    def run_runtime(cmd, **kwargs):
+        # @exceptional-double: deterministic multi-event and absent-field CLI
+        # responses cannot be requested from the real OpenCode runtime.
+        context.runtime_commands.append(cmd)
+        return Result()
+
+    run_loop.subprocess.run = run_runtime
+    try:
+        response_text = run_loop.run_opencode(
+            "fixture system prompt",
+            "fixture task",
+            context.workflow_dir,
+            export_evidence_path=context.evidence_path,
+        )
+    finally:
+        run_loop.subprocess.run = original_run
+    record_path = run_loop.write_accounting_record(
+        context.workflow_dir, "pass1", "author", "opencode", response_text
     )
-    context.result = run_driver(context, code)
+    context.accounting_record = json.loads(record_path.read_text(encoding="utf-8"))
 
 
-@when("run_loop.py captures the session export with the default export capture ceiling")
-def step_capture_default_limit(context):
-    _run_export_capture(context, None)
+@then("it derives the normalized token counts and cost from all reported run events")
+def step_opencode_event_accounting_is_aggregated(context):
+    assert context.accounting_record["input_tokens"] == 7, context.accounting_record
+    assert context.accounting_record["output_tokens"] == 10, context.accounting_record
+    assert context.accounting_record["cost_usd"] == 0.05, context.accounting_record
 
 
-@when('run_loop.py captures the session export with "--export-capture-limit {limit:d}"')
-def step_capture_explicit_limit(context, limit):
-    _run_export_capture(context, limit)
+@then("it preserves the complete NDJSON run events as raw evidence")
+def step_opencode_events_are_preserved(context):
+    assert context.evidence_path.read_text(encoding="utf-8") == "\n".join(
+        json.dumps(event) for event in context.opencode_events
+    )
 
 
-@when('the "pce" command captures the session export with "--export-capture-limit {limit:d}"')
-def step_packaged_capture_explicit_limit(context, limit):
-    _run_export_capture(context, limit)
+@then('it does not call "opencode export"')
+def step_opencode_export_not_called(context):
+    assert all(command[:2] != ["opencode", "export"] for command in context.runtime_commands), context.runtime_commands
 
 
-@then("it parses the complete session export for accounting")
-def step_complete_export_parsed(context):
-    assert context.result.returncode == 0, context.result.stdout + context.result.stderr
+@then("the accounting record's {field} is null")
+def step_accounting_field_is_null(context, field):
+    assert context.accounting_record[field] is None, context.accounting_record
 
-
-@then("it preserves the complete session export as raw evidence")
-@then("it preserves the captured session export as raw evidence")
-def step_export_evidence_preserved(context):
-    assert context.evidence_path.is_file(), context.result.stdout + context.result.stderr
-    assert context.evidence_path.stat().st_size == context.export_size
-
-
-@then("it exits with status 2 before parsing the partial session export")
-def step_partial_export_rejected(context):
-    assert context.result.returncode == 2, context.result.stdout + context.result.stderr
-    assert "JSONDecodeError" not in context.result.stderr, context.result.stderr
-
-
-@then("the failure reports the configured ceiling as {limit:d} bytes")
-def step_failure_reports_ceiling(context, limit):
-    assert str(limit) in context.result.stderr, context.result.stderr
-
-
-@then("the failure reports the observed export size when it is known")
-def step_failure_reports_observed_size(context):
-    assert str(context.export_size) in context.result.stderr, context.result.stderr
-
-
-@then('it reports "--export-capture-limit" with a default of {limit:d} bytes')
-def step_help_reports_export_capture_limit(context, limit):
-    output = context.result.stdout + context.result.stderr
-    assert f"--export-capture-limit" in output, output
-    assert f"(default: {limit})" in " ".join(output.split()), output
 
 @given('run_loop.py dispatches the "{role}" role in pass "{pass_id}" through the "{runtime}" runtime')
 def step_accounting_dispatch_setup(context, role, pass_id, runtime):
@@ -906,7 +890,7 @@ def step_check_dispatch_order(context):
     assert author_at < archivist_at < fact_checker_gate_at < critic_gate_at, output
 
 
-@then('the packaged pass dispatches "author", "archivist", "fact-checker", and "critic" through the real OpenCode runtime in order')
+@then('the packaged pass dispatches "author", "archivist", "fact-checker", and "critic" through the selected runtime in order')
 def step_check_packaged_dispatch_order(context):
     step_check_dispatch_order(context)
 
@@ -922,7 +906,7 @@ def step_check_packaged_accounting_records(context):
     assert [record["role"] for record in records] == [
         "author", "archivist", "fact-checker", "critic"
     ], records
-    assert all(record["runtime"] == "opencode" for record in records), records
+    assert all(record["runtime"] == context.runtime for record in records), records
 
 
 @then('the critic accounting record names profile "{profile}"')
