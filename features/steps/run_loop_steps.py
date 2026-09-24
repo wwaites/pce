@@ -562,6 +562,54 @@ def _fake_subprocess_driver_code(call_line):
     )
 
 
+@given("a role dispatch whose runtime exits non-zero with empty stderr")
+def step_failed_dispatch(context):
+    context.tmp_root = build_run_loop_fixture(context)
+    context.failed_role = "critic"
+    context.failed_runtime = "opencode"
+    context.failed_status = 17
+    (context.tmp_root / "skills-core" / "critic.md").write_text("# Critic fixture\n", encoding="utf-8")
+
+
+@given("the runtime writes output and structured events to stdout")
+def step_failed_dispatch_stdout(context):
+    context.failed_stdout = 'critic output\n{"type":"error","message":"provider rejected request"}'
+
+
+@when("run_loop.py reports the dispatch failure")
+def step_report_dispatch_failure(context):
+    code = (
+        "class _FailedResult:\n"
+        f"    returncode = {context.failed_status}\n"
+        f"    stdout = {context.failed_stdout!r}\n"
+        "    stderr = ''\n"
+        "def _failed_run(cmd, **kwargs):\n"
+        "    # @exceptional-double: real runtimes cannot reliably produce this\n"
+        "    # specific non-zero, empty-stderr condition on demand.\n"
+        "    return _FailedResult()\n"
+        "run_loop.subprocess.run = _failed_run\n"
+        "try:\n"
+        "    run_loop.run_opencode('# Critic fixture', 'fixture task', Path('.'))\n"
+        "except RuntimeError as exc:\n"
+        f"    print({context.failed_role!r} + ': ' + str(exc))\n"
+    )
+    context.result = run_driver(context, code)
+    assert context.result.returncode == 0, context.result.stdout + context.result.stderr
+    context.failure = context.result.stdout
+
+
+@then("the failure names the role, runtime, and exit status")
+def step_failure_identity(context):
+    assert context.failed_role in context.failure, context.failure
+    assert context.failed_runtime in context.failure, context.failure
+    assert str(context.failed_status) in context.failure, context.failure
+
+
+@then("the failure includes the captured stdout and structured events")
+def step_failure_evidence(context):
+    assert context.failed_stdout in context.failure, context.failure
+
+
 @given('a workflow directory with state.json\'s "models.{role}" naming model "{model}" for runtime "{runtime}"')
 def step_model_pin_role_setup(context, role, model, runtime):
     state = _pending_state(context)
@@ -705,7 +753,13 @@ def step_check_dispatch_order(context):
     assert author_at < archivist_at < fact_checker_gate_at < critic_gate_at, output
 
 
+@then('the packaged pass dispatches "author", "archivist", "fact-checker", and "critic" through the real OpenCode runtime in order')
+def step_check_packaged_dispatch_order(context):
+    step_check_dispatch_order(context)
+
+
 @then("it prints the fact-checker verdict and the critic verdict in its summary")
+@then("the packaged pass reports the fact-checker and critic verdicts")
 def step_check_verdict_printed(context):
     output = context.result.stdout + context.result.stderr
     summary = output.split("== summary ==", 1)[-1]
@@ -714,6 +768,7 @@ def step_check_verdict_printed(context):
 
 
 @then('it exits 0 only when every verdict is "pass" or "approve"')
+@then('the packaged pass exits 0 only when every verdict is "pass" or "approve"')
 def step_check_exit_matches_verdicts(context):
     output = context.result.stdout + context.result.stderr
     summary = output.split("== summary ==", 1)[-1]

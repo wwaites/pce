@@ -142,6 +142,7 @@ def run_opencode(system_prompt: str, message: str, cwd: Path, model: str | None 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
     @planks('the dispatched subprocess command includes "--model" followed by "{model}"')
     @planks('the dispatched subprocess command does not include "--model"')
+    @planks('the failure includes the captured stdout and structured events')
     """
     combined = f"{system_prompt}\n\n---\n\nTask:\n\n{message}"
     cmd = ["opencode", "run", combined, "--dir", str(cwd), "--format", "json"]
@@ -151,7 +152,7 @@ def run_opencode(system_prompt: str, message: str, cwd: Path, model: str | None 
         cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=False
     )
     if result.returncode != 0:
-        raise RuntimeError(f"opencode exited {result.returncode}: {result.stderr[-2000:]}")
+        raise RuntimeError(f"opencode exited {result.returncode}: {(result.stderr or result.stdout)[-2000:]}")
     return result.stdout
 
 

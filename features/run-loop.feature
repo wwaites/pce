@@ -79,6 +79,22 @@ Feature: Bounded review-pass runner
       | opencode |
       | pi       |
 
+  @sandbox
+  Scenario: Packaged pce completes the critic dispatch through OpenCode
+    Given the PCE Nix package is installed
+    And a workflow directory with "brief.md", "state.json" naming the "fact-checker" and "critic" gates, and an approved source pack
+    When the "pce" command runs against that directory with "--runtime opencode"
+    Then the packaged pass dispatches "author", "archivist", "fact-checker", and "critic" through the real OpenCode runtime in order
+    And the packaged pass reports the fact-checker and critic verdicts
+    And the packaged pass exits 0 only when every verdict is "pass" or "approve"
+
+  Scenario: A failed runtime dispatch reports its captured evidence
+    Given a role dispatch whose runtime exits non-zero with empty stderr
+    And the runtime writes output and structured events to stdout
+    When run_loop.py reports the dispatch failure
+    Then the failure names the role, runtime, and exit status
+    And the failure includes the captured stdout and structured events
+
   Rule: Every role dispatch also writes one accounting record, since the
   chosen runtime already reports its own token counts and cost in the same
   response run_loop.py currently discards after pulling out the role's
