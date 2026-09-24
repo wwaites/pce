@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import traceback
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -140,6 +141,7 @@ def run_opencode(system_prompt: str, message: str, cwd: Path, model: str | None 
     """Run one bounded opencode CLI turn with the given system prompt and task.
 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks("the workflow directory contains one normalized accounting record for each successful role dispatch in that order")
     @planks('the dispatched subprocess command includes "--model" followed by "{model}"')
     @planks('the dispatched subprocess command does not include "--model"')
     @planks('the failure includes the captured stdout and structured events')
@@ -153,7 +155,26 @@ def run_opencode(system_prompt: str, message: str, cwd: Path, model: str | None 
     )
     if result.returncode != 0:
         raise RuntimeError(f"opencode exited {result.returncode}: {(result.stderr or result.stdout)[-2000:]}")
-    return result.stdout
+    events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    response = next(event for event in reversed(events) if "part" in event)
+    session_id = response["sessionID"]
+    exported = subprocess.run(
+        ["opencode", "export", session_id],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT_SECONDS,
+        check=False,
+    )
+    if exported.returncode != 0:
+        raise RuntimeError(f"opencode export exited {exported.returncode}: {(exported.stderr or exported.stdout)[-2000:]}")
+    session = json.loads(exported.stdout)
+    response["info"] = {
+        "model": {"id": session["info"]["model"]["id"]},
+        "tokens": response["part"]["tokens"],
+        "cost": response["part"]["cost"],
+    }
+    return "\n".join([*(json.dumps(event) for event in events[:-1]), json.dumps(response)])
 
 
 def run_pi(role: str, skill_path: Path, message: str, cwd: Path, model: str | None = None) -> str:
@@ -234,13 +255,24 @@ def schema_text(name: str) -> str:
     return (ROOT / "schemas" / name).read_text(encoding="utf-8")
 
 
-def write_accounting_record(workflow_dir: Path, pass_id: str, role: str, runtime: str, response_text: str) -> Path:
+def write_accounting_record(
+    workflow_dir: Path,
+    pass_id: str,
+    role: str,
+    runtime: str,
+    response_text: str,
+    profile_id: str | None = None,
+) -> Path:
     """Normalize a runtime's raw response and write one accounting record under accounting/history/.
 
     @planks('the workflow directory contains an accounting record under "accounting/history/" naming pass "{pass_id}", role "{role}", and runtime "{runtime}"')
     @planks('the response conforms to the "Accounting Record" schema in "schemas/accounting.schema.json"')
     """
-    response = json.loads(response_text)
+    if runtime == "opencode":
+        events = [json.loads(line) for line in response_text.splitlines() if line.strip()]
+        response = next(event for event in reversed(events) if "info" in event)
+    else:
+        response = json.loads(response_text)
     if runtime == "claude":
         model = next(iter(response["modelUsage"]))
         input_tokens = response["usage"]["input_tokens"]
@@ -262,7 +294,7 @@ def write_accounting_record(workflow_dir: Path, pass_id: str, role: str, runtime
     record = {
         "pass_id": pass_id,
         "role": role,
-        "profile_id": None,
+        "profile_id": profile_id,
         "runtime": runtime,
         "provider": None,
         "model": model,
@@ -295,12 +327,14 @@ def run_author(runtime: str, workflow_dir: Path) -> None:
     """Dispatch the author role and require its draft and claims outputs.
 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks("the workflow directory contains one normalized accounting record for each successful role dispatch in that order")
     @planks("the task argument that call passes to dispatch() starts with the content of templates/prompts/{role}-task.md")
     @planks("run_loop.py contains no hardcoded English sentence as that role's task text")
     """
     task = build_dispatch_task("author") + schema_text("claims.schema.json")
     model = resolve_model(workflow_dir, "author", runtime)
-    dispatch(runtime, "author", task, workflow_dir, model)
+    response = dispatch(runtime, "author", task, workflow_dir, model)
+    write_accounting_record(workflow_dir, PASS_ID, "author", runtime, response)
     if not (workflow_dir / "drafts" / "current.md").is_file():
         raise RuntimeError("author did not write drafts/current.md")
     if not (workflow_dir / "claims" / "current.json").is_file():
@@ -311,12 +345,14 @@ def run_archivist(runtime: str, workflow_dir: Path) -> None:
     """Dispatch the archivist role and require a preserved draft snapshot.
 
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks("the workflow directory contains one normalized accounting record for each successful role dispatch in that order")
     @planks("the task argument that call passes to dispatch() starts with the content of templates/prompts/{role}-task.md")
     @planks("run_loop.py contains no hardcoded English sentence as that role's task text")
     """
     task = build_dispatch_task("archivist") + PASS_ID
     model = resolve_model(workflow_dir, "archivist", runtime)
-    dispatch(runtime, "archivist", task, workflow_dir, model)
+    response = dispatch(runtime, "archivist", task, workflow_dir, model)
+    write_accounting_record(workflow_dir, PASS_ID, "archivist", runtime, response)
     draft_glob = to_glob(parse_scope("archivist", "## Write Scope")[0], **{"pass-id": PASS_ID})
     if not globmod.glob(draft_glob, root_dir=workflow_dir):
         raise RuntimeError(f"archivist did not write a draft snapshot matching {draft_glob}")
@@ -328,6 +364,7 @@ def run_fact_checker(runtime: str, workflow_dir: Path) -> dict:
     @planks('the staged workspace does not contain "{relpath}"')
     @planks('the workflow directory contains "{relpath}"')
     @planks('it prints the fact-checker verdict and the critic verdict in its summary')
+    @planks("the workflow directory contains one normalized accounting record for each successful role dispatch in that order")
     @planks("the task argument that call passes to dispatch() starts with the content of templates/prompts/{role}-task.md")
     @planks("run_loop.py contains no hardcoded English sentence as that role's task text")
     """
@@ -343,7 +380,8 @@ def run_fact_checker(runtime: str, workflow_dir: Path) -> dict:
             + PASS_ID
             + schema_text("fact-check.schema.json")
         )
-        dispatch(runtime, "fact-checker", task, staged, model)
+        response = dispatch(runtime, "fact-checker", task, staged, model)
+        write_accounting_record(workflow_dir, PASS_ID, "fact-checker", runtime, response)
         current = staged / "reviews" / "current" / "fact-check.json"
         if not current.is_file():
             raise RuntimeError("fact-checker did not write reviews/current/fact-check.json")
@@ -360,6 +398,8 @@ def run_critic(runtime: str, workflow_dir: Path, profile_id: str, remit: str) ->
     @planks('the staged workspace does not contain "{relpath}"')
     @planks('the workflow directory contains "{relpath}"')
     @planks('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
+    @planks("the workflow directory contains one normalized accounting record for each successful role dispatch in that order")
+    @planks('the critic accounting record names profile "{profile}"')
     @planks("the task argument that call passes to dispatch() starts with the content of templates/prompts/{role}-task.md")
     @planks("run_loop.py contains no hardcoded English sentence as that role's task text")
     """
@@ -376,7 +416,8 @@ def run_critic(runtime: str, workflow_dir: Path, profile_id: str, remit: str) ->
             + f"{PASS_ID}\n{profile_id}\n{remit}\n\n"
             + (ROOT / "templates" / "reviews" / "critic.md").read_text(encoding="utf-8")
         )
-        dispatch(runtime, "critic", task, staged, model)
+        response = dispatch(runtime, "critic", task, staged, model)
+        write_accounting_record(workflow_dir, PASS_ID, "critic", runtime, response, profile_id)
         current = staged / "reviews" / "current" / f"critic-{profile_id}.md"
         if not current.is_file():
             raise RuntimeError(f"critic({profile_id}) did not write its current review")
@@ -394,6 +435,8 @@ def main() -> int:
     @planks('it reports that "{filename}" was not found')
     @planks('it exits with status {code:d}')
     @planks('it exits 0 only when every verdict is "pass" or "approve"')
+    @planks('it emits one JSON completion summary with completion_state "{state}"')
+    @planks('the summary lists the ordered gate verdicts "{fact_verdict}" and "{critic_verdict}"')
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workflow_dir", type=Path, help="Project workspace holding brief.md, sources/, etc.")
@@ -410,24 +453,28 @@ def main() -> int:
 
     state = json.loads((workflow_dir / "state.json").read_text(encoding="utf-8"))
 
-    print("== author ==")
-    run_author(args.runtime, workflow_dir)
-    print("== archivist ==")
-    run_archivist(args.runtime, workflow_dir)
+    try:
+        print("== author ==")
+        run_author(args.runtime, workflow_dir)
+        print("== archivist ==")
+        run_archivist(args.runtime, workflow_dir)
 
-    verdicts = []
-    for gate in state["required_gates"]:
-        print(f"== gate: {gate} ==")
-        if gate == "fact-checker":
-            verdicts.append(("fact-checker", run_fact_checker(args.runtime, workflow_dir)["verdict"]))
-        elif gate == "critic":
-            for profile_id, cfg in state.get("critic_profiles", {}).items():
-                result = run_critic(args.runtime, workflow_dir, profile_id, cfg["remit"])
-                verdicts.append((f"critic:{profile_id}", result["verdict"]))
-        elif gate == "specialist":
-            print("specialist gate not yet wired into this tiny runner", file=sys.stderr)
-        else:
-            raise RuntimeError(f"unknown gate {gate!r}")
+        verdicts = []
+        for gate in state["required_gates"]:
+            print(f"== gate: {gate} ==")
+            if gate == "fact-checker":
+                verdicts.append(("fact-checker", run_fact_checker(args.runtime, workflow_dir)["verdict"]))
+            elif gate == "critic":
+                for profile_id, cfg in state.get("critic_profiles", {}).items():
+                    result = run_critic(args.runtime, workflow_dir, profile_id, cfg["remit"])
+                    verdicts.append((f"critic:{profile_id}", result["verdict"]))
+            elif gate == "specialist":
+                print("specialist gate not yet wired into this tiny runner", file=sys.stderr)
+            else:
+                raise RuntimeError(f"unknown gate {gate!r}")
+    except (OSError, KeyError, TypeError, ValueError, RuntimeError, json.JSONDecodeError):
+        traceback.print_exc()
+        return 2
 
     print("\n== summary ==")
     ok = True
@@ -435,6 +482,10 @@ def main() -> int:
         print(f"{name}: {verdict}")
         if verdict not in ("pass", "approve"):
             ok = False
+    print(json.dumps({
+        "completion_state": "approved" if ok else "revision_required",
+        "gate_verdicts": [f"{name.split(':', 1)[0]}: {verdict}" for name, verdict in verdicts],
+    }))
     return 0 if ok else 1
 
 

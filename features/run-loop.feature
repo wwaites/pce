@@ -80,11 +80,13 @@ Feature: Bounded review-pass runner
       | pi       |
 
   @sandbox
-  Scenario: Packaged pce completes the critic dispatch through OpenCode
+  Scenario: Packaged pce records every successful OpenCode role dispatch
     Given the PCE Nix package is installed
     And a workflow directory with "brief.md", "state.json" naming the "fact-checker" and "critic" gates, and an approved source pack
     When the "pce" command runs against that directory with "--runtime opencode"
     Then the packaged pass dispatches "author", "archivist", "fact-checker", and "critic" through the real OpenCode runtime in order
+    And the workflow directory contains one normalized accounting record for each successful role dispatch in that order
+    And the critic accounting record names profile "reviewer"
     And the packaged pass reports the fact-checker and critic verdicts
     And the packaged pass exits 0 only when every verdict is "pass" or "approve"
 
@@ -128,6 +130,34 @@ Feature: Bounded review-pass runner
     Given an accounting record written for a role dispatch
     When the record is checked against the "Accounting Record" schema
     Then the response conforms to the "Accounting Record" schema in "schemas/accounting.schema.json"
+
+  Rule: The runner exposes a stable machine interface for completed editorial
+  outcomes and execution failures. Exit status 0 means approved completion,
+  exit status 1 means completed revision-required, and exit status 2 means an
+  execution, configuration, or runtime failure. Every completed editorial run
+  emits one JSON summary with its completion state and ordered gate verdicts.
+
+  Scenario: An all-approved editorial run exits successfully
+    Given a bounded pass whose required gates return "pass" and "approve"
+    When run_loop.py completes the pass
+    Then it exits with status 0
+
+  Scenario: A completed revision-required editorial run has a distinct exit status
+    Given a bounded pass whose required critic gate returns "revise"
+    When run_loop.py completes the pass
+    Then it exits with status 1
+
+  Scenario: An execution failure uses the execution-failure exit class
+    Given a bounded pass whose required gate runtime fails
+    When run_loop.py stops the pass
+    Then it exits with status 2
+
+  @contract
+  Scenario: A completed editorial run emits its machine-readable outcome
+    Given a bounded pass whose required gates return "pass" and "revise"
+    When run_loop.py completes the pass
+    Then it emits one JSON completion summary with completion_state "revision_required"
+    And the summary lists the ordered gate verdicts "fact-checker: pass" and "critic: revise"
 
   Rule: Task-prompt text sent to each dispatched role lives under templates/,
   not as hardcoded strings in run_loop.py, so it stays reviewable and

@@ -527,6 +527,80 @@ def step_record_conforms(context):
     assert not context.schema_errors, context.schema_errors
 
 
+# --- stable completion interface ----------------------------------------------
+
+@given('a bounded pass whose required gates return "{fact_verdict}" and "{critic_verdict}"')
+def step_bounded_pass_verdicts(context, fact_verdict, critic_verdict):
+    context.fact_verdict = fact_verdict
+    context.critic_verdict = critic_verdict
+    context.runtime_fails = False
+
+
+@given('a bounded pass whose required critic gate returns "{critic_verdict}"')
+def step_bounded_pass_critic_verdict(context, critic_verdict):
+    context.fact_verdict = "pass"
+    context.critic_verdict = critic_verdict
+    context.runtime_fails = False
+
+
+@given("a bounded pass whose required gate runtime fails")
+def step_bounded_pass_runtime_failure(context):
+    context.fact_verdict = "pass"
+    context.critic_verdict = "approve"
+    context.runtime_fails = True
+
+
+def _run_bounded_pass_fixture(context):
+    workflow_dir = new_tmp_dir(context, "pce-outcome-")
+    (workflow_dir / "brief.md").write_text("# Fixture brief\n", encoding="utf-8")
+    (workflow_dir / "state.json").write_text(json.dumps({
+        "required_gates": ["fact-checker", "critic"],
+        "critic_profiles": {"reviewer": {"remit": "Fixture remit."}},
+    }), encoding="utf-8")
+    code = IMPORT_PRELUDE + (
+        "# @exceptional-double: real role dispatch is covered by the @sandbox tier; "
+        "this fixture isolates main() completion composition.\n"
+        "run_loop.run_author = lambda runtime, workflow_dir: None\n"
+        "run_loop.run_archivist = lambda runtime, workflow_dir: None\n"
+        f"run_loop.run_fact_checker = lambda runtime, workflow_dir: {{'verdict': {context.fact_verdict!r}}}\n"
+        f"run_loop.run_critic = lambda runtime, workflow_dir, profile_id, remit: "
+        f"{{'verdict': {context.critic_verdict!r}}}\n"
+    )
+    if context.runtime_fails:
+        code += "run_loop.run_fact_checker = lambda runtime, workflow_dir: (_ for _ in ()).throw(RuntimeError('fixture failure'))\n"
+    code += (
+        f"sys.argv = ['run_loop.py', {str(workflow_dir)!r}, '--runtime', 'pi']\n"
+        "raise SystemExit(run_loop.main())\n"
+    )
+    context.result = run(
+        [sys.executable, "-c", code],
+        cwd=REPO_ROOT,
+    )
+
+
+@when("run_loop.py completes the pass")
+def step_complete_bounded_pass(context):
+    _run_bounded_pass_fixture(context)
+
+
+@when("run_loop.py stops the pass")
+def step_stop_bounded_pass(context):
+    _run_bounded_pass_fixture(context)
+
+
+@then('it emits one JSON completion summary with completion_state "{state}"')
+def step_json_completion_state(context, state):
+    summaries = [json.loads(line) for line in context.result.stdout.splitlines() if line.startswith("{")]
+    assert len(summaries) == 1, context.result.stdout + context.result.stderr
+    assert summaries[0]["completion_state"] == state, summaries[0]
+    context.completion_summary = summaries[0]
+
+
+@then('the summary lists the ordered gate verdicts "{fact_verdict}" and "{critic_verdict}"')
+def step_json_ordered_verdicts(context, fact_verdict, critic_verdict):
+    assert context.completion_summary["gate_verdicts"] == [fact_verdict, critic_verdict], context.completion_summary
+
+
 # --- model pinning ------------------------------------------------------------
 
 def _pending_state(context):
@@ -730,18 +804,6 @@ def step_sandbox_workflow(context, gate1, gate2):
     (sources_dir / "doc-a.md").write_text(SANDBOX_SOURCE, encoding="utf-8")
 
 
-@when("run_loop.py runs against that directory with a real agent runtime")
-def step_run_real_pass(context):
-    env = dict(os.environ)
-    env.pop("ANTHROPIC_API_KEY", None)
-    context.result = run(
-        [sys.executable, str(REPO_ROOT / "packaging" / "run_loop.py"), str(context.workflow_dir), "--runtime", "claude"],
-        cwd=REPO_ROOT,
-        env=env,
-        timeout=1800,
-    )
-
-
 @then('it dispatches "author", then "archivist", then the "fact-checker" gate, then the "critic" gate, in order')
 def step_check_dispatch_order(context):
     output = context.result.stdout + context.result.stderr
@@ -758,6 +820,32 @@ def step_check_packaged_dispatch_order(context):
     step_check_dispatch_order(context)
 
 
+@then("the workflow directory contains one normalized accounting record for each successful role dispatch in that order")
+def step_check_packaged_accounting_records(context):
+    history_dir = context.workflow_dir / "accounting" / "history"
+    records = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in history_dir.glob("*.json")
+    ]
+    records.sort(key=lambda record: record["timestamp"])
+    assert [record["role"] for record in records] == [
+        "author", "archivist", "fact-checker", "critic"
+    ], records
+    assert all(record["runtime"] == "opencode" for record in records), records
+
+
+@then('the critic accounting record names profile "{profile}"')
+def step_check_critic_accounting_profile(context, profile):
+    history_dir = context.workflow_dir / "accounting" / "history"
+    records = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in history_dir.glob("*.json")
+    ]
+    critic_records = [record for record in records if record["role"] == "critic"]
+    assert len(critic_records) == 1, records
+    assert critic_records[0]["profile_id"] == profile, critic_records[0]
+
+
 @then("it prints the fact-checker verdict and the critic verdict in its summary")
 @then("the packaged pass reports the fact-checker and critic verdicts")
 def step_check_verdict_printed(context):
@@ -772,7 +860,11 @@ def step_check_verdict_printed(context):
 def step_check_exit_matches_verdicts(context):
     output = context.result.stdout + context.result.stderr
     summary = output.split("== summary ==", 1)[-1]
-    verdict_lines = [line for line in summary.splitlines() if ":" in line]
+    verdict_lines = [
+        line
+        for line in summary.splitlines()
+        if line.startswith(("fact-checker:", "critic:"))
+    ]
     all_ok = all(line.rsplit(":", 1)[1].strip() in ("pass", "approve") for line in verdict_lines)
     expected_code = 0 if all_ok else 1
     assert context.result.returncode == expected_code, (
